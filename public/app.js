@@ -3,8 +3,8 @@
 (function () {
   const C = Core, $ = id => document.getElementById(id);
   const D = C.fmtDurWords, mi = m => C.miles(m).toFixed(1);
-  const st = { report: null, view: 'overview', sort: {}, q: '', loading: false, status: null, direct: true, a: '', b: '', hos: null, hosErr: '', hosLoading: false, eld: null, eldErr: '', eldLoading: false, reviewOnly: false, faults: null, faultsErr: '', faultsLoading: false, activeOnly: false };
-  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', sites: 'Time on site', lanes: 'Point to point', compare: 'Compare two locations', faults: 'Fault history', hos: '80-hour clock', eld: 'Shift hours (ELD)', eldday: 'Hours by driver and day', check: 'Connection check', rules: 'How numbers are worked out' };
+  const st = { report: null, view: 'overview', sort: {}, q: '', loading: false, status: null, direct: true, a: '', b: '', hos: null, hosErr: '', hosLoading: false, eld: null, eldErr: '', eldLoading: false, reviewOnly: false, ts: null, tsMsg: '', tol: 30, diffOnly: false, faults: null, faultsErr: '', faultsLoading: false, activeOnly: false };
+  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', sites: 'Time on site', lanes: 'Point to point', compare: 'Compare two locations', faults: 'Fault history', hos: '80-hour clock', eld: 'Shift hours (ELD)', eldday: 'Hours by driver and day', tscheck: 'Compare to timesheets', check: 'Connection check', rules: 'How numbers are worked out' };
 
   function el(tag, attrs, kids) {
     const e = document.createElement(tag);
@@ -85,7 +85,7 @@
       el('span', {}, [el('i', { style: 'background:var(--drive)' }), 'Travel']), el('span', {}, [el('i', { style: 'background:var(--site)' }), 'On site']),
       el('span', {}, [el('i', { style: 'background:var(--yard)' }), 'At yard mid-shift']), el('span', {}, [el('i', { style: 'background:var(--over)' }), '16 hour limit'])]);
   }
-  function pills(flags) { return flags.map(f => el('span', { class: 'pill' + (C.isOverLimit(f) || /mid-shift|away from a yard|after leaving|long after/.test(f) || /^(Stop|Protect|Active|Out of hours)$/.test(f) ? ' hot' : ''), text: f })); }
+  function pills(flags) { return flags.map(f => el('span', { class: 'pill' + (C.isOverLimit(f) || /mid-shift|away from a yard|after leaving|long after|Timesheet higher|no ELD shift/.test(f) || /^(Stop|Protect|Active|Out of hours)$/.test(f) ? ' hot' : ''), text: f })); }
 
   /* ---------- ELD shift hours: the timesheet check ---------- */
   const REVIEW = /Over 16h|over 10h|mid-shift|under 10h|away from a yard|after leaving|long after/i;
@@ -116,6 +116,61 @@
       el('section', { class: 'band', style: 'grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(R.length, 'Finished shifts'), tile(new Set(R.map(r => r.driverId)).size, 'Drivers'), tile(Math.round(hrs / C.H).toLocaleString(), 'Total shift hours'),
         tile(R.length ? (hrs / R.length / C.H).toFixed(1) : '0', 'Average shift, hours'), tile(rev, 'Shifts to review', rev > 0)]),
       tableView(key)]);
+  }
+
+  /* ---------- compare to hand-filled timesheets ---------- */
+  function tsLoad() { if (st.ts) return st.ts; try { st.ts = JSON.parse(localStorage.getItem('pti.timesheets') || '{}'); } catch (e) { st.ts = {}; } return st.ts; }
+  function tsSave() { try { localStorage.setItem('pti.timesheets', JSON.stringify(st.ts)); } catch (e) { st.tsMsg += ' The hours could not be saved in this browser, so they will be gone after a refresh.'; } }
+  async function tsImport(file) {
+    try {
+      const list = await Timesheet.readRecap(file), ts = tsLoad(); let days = 0;
+      for (const d of list) { const k = Timesheet.nameKey(d.name), cur = ts[k] || { name: d.name, days: {} }; cur.name = d.name; Object.assign(cur.days, d.days); ts[k] = cur; days += Object.keys(d.days).length; }
+      const all = [].concat(...list.map(d => Object.keys(d.days))).sort();
+      st.tsMsg = 'Imported ' + list.length + ' drivers and ' + days + ' days, ' + all[0] + ' through ' + all[all.length - 1] + '.'; tsSave();
+    } catch (e) { st.tsMsg = e.message || 'That file could not be read.'; }
+    render();
+  }
+  function tsRows() {
+    if (!st.eld || st.eld.example) return [];
+    const ts = tsLoad(), tol = st.tol / 60, dsel = $('f-driver').value, eldBy = new Map(), eldNames = new Map();
+    for (const s of st.eld.rows) { const k = Timesheet.nameKey(s.driver); eldNames.set(k, s.driver); const kk = k + '|' + s.date, r = eldBy.get(kk) || { span: 0, drive: 0, flags: new Set(), n: 0 }; r.span += s.span; r.drive += s.drive; r.n++; s.flags.filter(f => REVIEW.test(f)).forEach(f => r.flags.add(f)); eldBy.set(kk, r); }
+    const rows = [];
+    for (const k of Object.keys(ts)) {
+      const d = ts[k], shown = eldNames.get(k) || d.name;
+      if (dsel && shown !== dsel) continue;
+      for (const date of Object.keys(d.days)) {
+        if (date < st.eld.start || date > st.eld.end) continue;
+        const t = d.days[date], e = eldBy.get(k + '|' + date), eh = e ? e.span / C.H : 0;
+        if (!t && !e) continue;
+        const diff = t - eh;
+        const status = !e ? 'Hours claimed, no ELD shift' : !t ? 'ELD shift, no hours claimed' : Math.abs(diff) <= tol ? 'Match' : diff > 0 ? 'Timesheet higher' : 'Timesheet lower';
+        rows.push({ driver: shown, date, t, eh: e ? eh : null, diff, status, drive: e ? e.drive : null, shifts: e ? e.n : 0, flags: e ? [...e.flags] : [] });
+      }
+    }
+    rows.sort((a, b) => a.driver.localeCompare(b.driver) || (a.date < b.date ? -1 : 1));
+    return st.diffOnly ? rows.filter(r => r.status !== 'Match') : rows;
+  }
+  function tsView() {
+    if (st.eldErr) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.eldErr + ' Open Connection check for details.' })]);
+    const ts = tsLoad(), have = Object.keys(ts).length;
+    const input = el('input', { type: 'file', accept: '.xlsx', 'aria-label': 'Driver Recap workbook', onchange: e => { if (e.target.files[0]) tsImport(e.target.files[0]); } });
+    const importer = el('section', { class: 'panel' }, [el('header', {}, [el('h2', { text: 'Driver-reported hours' }), el('span', { class: 'hint', text: have ? have + ' drivers saved in this browser' : 'Nothing imported yet' })]),
+      el('div', { class: 'tools', style: 'border:0' }, [el('label', { class: 'field' }, ['Driver Recap workbook (.xlsx)', input]),
+        el('label', { class: 'field' }, ['Count as a match within', el('select', { onchange: e => { st.tol = +e.target.value; render(); } }, [15, 30, 45, 60].map(m => { const o = new Option(m + ' minutes', m); o.selected = m === st.tol; return o; }))]),
+        have ? el('button', { type: 'button', class: 'btn', text: 'Clear imported hours', onclick: () => { st.ts = {}; tsSave(); st.tsMsg = 'Imported hours cleared.'; render(); } }) : null,
+        el('span', { class: 'msg', role: 'status', text: st.tsMsg })]),
+      el('div', { class: 'body', style: 'padding-top:0' }, [el('p', { class: 'hint', style: 'margin:0;max-width:80ch', text: 'Only the driver name, the dates and the Total Hours row are read. The file is opened in this browser and is not uploaded; pay figures in it are ignored. Imported hours are kept in this browser only.' })])]);
+    if (!st.eld) { loadEld(); return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [importer, el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Loading ELD shifts from Samsara.' })])]); }
+    if (st.eld.example) return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [importer, el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Comparing needs live Samsara data.' })])]);
+    const keep = st.diffOnly; st.diffOnly = false; const all = tsRows(); st.diffOnly = keep;
+    const n = s => all.filter(r => r.status === s), hi = n('Timesheet higher'), lo = n('Timesheet lower'), tile = (v, l, alert) => el('div', { class: alert ? 'alert' : '' }, [el('b', { text: String(v) }), el('span', { text: l })]);
+    const band = el('section', { class: 'band', style: 'grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(all.length, 'Driver days compared'), tile(n('Match').length, 'Match within ' + st.tol + ' minutes'),
+      tile(hi.length, 'Timesheet higher, ' + hi.reduce((a, r) => a + r.diff, 0).toFixed(1) + ' hours over', hi.length > 0), tile(lo.length, 'Timesheet lower, ' + Math.abs(lo.reduce((a, r) => a + r.diff, 0)).toFixed(1) + ' hours under'),
+      tile(n('Hours claimed, no ELD shift').length + n('ELD shift, no hours claimed').length, 'One side missing')]);
+    const unmatched = Object.keys(ts).filter(k => !st.eld.rows.some(s => Timesheet.nameKey(s.driver) === k)).map(k => ts[k].name);
+    return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [importer,
+      have && unmatched.length ? el('div', { class: 'notice', text: unmatched.length + ' drivers on the sheet have no ELD shifts in this period under the same name: ' + unmatched.slice(0, 12).join('; ') + (unmatched.length > 12 ? '; and ' + (unmatched.length - 12) + ' more' : '') + '.' }) : null,
+      have ? band : null, have ? tableView('tscheck') : null]);
   }
 
   /* ---------- 80-hour clock (California intrastate, flammable tank vehicle) ---------- */
@@ -264,6 +319,12 @@
         ['Driver', r => r.driver], ['Shift date', r => r.date], ['Shifts', r => r.shifts, null, 1], ['Total shift hours', r => r.span, C.hrs, 1], ['To nearest quarter hour', r => r.span, q25, 1],
         ['On-duty hours', r => r.onDuty, C.hrs, 1], ['Drive hours', r => r.drive, C.hrs, 1], ['Flags', r => [...r.flags].join('; '), null, 0, null, 'flags']]
     },
+    tscheck: {
+      file: 'timesheet-check', rows: tsRows,
+      extra: () => el('label', { class: 'check' }, [el('input', Object.assign({ type: 'checkbox', onchange: e => { st.diffOnly = e.target.checked; render(); } }, st.diffOnly ? { checked: '' } : {})), 'Differences only']),
+      cols: [['Driver', r => r.driver], ['Shift date', r => r.date], ['Timesheet hours', r => r.t, v => v.toFixed(2), 1], ['ELD shift hours', r => r.eh, v => v.toFixed(2), 1], ['Difference (timesheet minus ELD)', r => r.diff, v => (v > 0 ? '+' : '') + v.toFixed(2), 1],
+        ['Result', r => r.status, null, 0, null, 'flags'], ['ELD drive hours', r => r.drive, C.hrs, 1], ['ELD shifts that day', r => r.shifts, null, 1], ['ELD flags', r => r.flags.join('; '), null, 0, null, 'flags']]
+    },
     hos: {
       file: '80-hour-clock', rows: hosRows, defaultSort: { i: 3, dir: 1 },
       get cols() {
@@ -304,7 +365,7 @@
     return { n: rows.length, text: '﻿' + [cols.map(c => q(c[0])).join(',')].concat(rows.map(r => cols.map(c => q(csvv(c, r))).join(','))).join('\r\n') + '\r\n' };
   }
   function downloadCsv(key, msg) {
-    const out = csvText(key), r = key === 'faults' ? st.faults : key === 'hos' ? { start: st.hos.dayLabels[0], end: st.hos.dayLabels[7] } : key === 'eld' || key === 'eldday' ? st.eld : st.report;
+    const out = csvText(key), r = key === 'faults' ? st.faults : key === 'hos' ? { start: st.hos.dayLabels[0], end: st.hos.dayLabels[7] } : key === 'eld' || key === 'eldday' || key === 'tscheck' ? st.eld : st.report;
     const a = el('a', { href: URL.createObjectURL(new Blob([out.text], { type: 'text/csv;charset=utf-8' })), download: 'pti-' + TABLES[key].file + '_' + r.start + '_to_' + r.end + '.csv' });
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     msg.textContent = 'Downloaded ' + out.n.toLocaleString() + ' rows.';
@@ -328,7 +389,7 @@
     return el('section', { class: 'panel' }, [
       el('div', { class: 'tools' }, [search, el('span', { class: 'count', text: rows.length.toLocaleString() + (rows.length === 1 ? ' row' : ' rows') + (rows.length > max ? ' (first ' + max.toLocaleString() + ' shown, the CSV has all)' : '') }),
         key === 'shifts' ? legend() : null, t.extra ? t.extra() : null, el('span', { class: 'grow', style: 'flex:1' }), msg, el('button', { type: 'button', class: 'btn', text: 'Download CSV', onclick: () => downloadCsv(key, msg) })]),
-      rows.length ? el('div', { class: 'scroll' }, [el('table', {}, [el('thead', {}, [head]), body])]) : el('div', { class: 'empty', text: key === 'hos' ? 'No drivers were on duty in these 8 days.' : key === 'faults' ? 'No fault codes were reported in this period with these filters.' : st.report ? 'No rows match. Clear the search or filters, or pick another period.' : 'Run a report to see data.' })]);
+      rows.length ? el('div', { class: 'scroll' }, [el('table', {}, [el('thead', {}, [head]), body])]) : el('div', { class: 'empty', text: key === 'tscheck' ? 'No days to compare. Check that the period above overlaps the dates on the imported sheet.' : key === 'hos' ? 'No drivers were on duty in these 8 days.' : key === 'faults' ? 'No fault codes were reported in this period with these filters.' : st.report ? 'No rows match. Clear the search or filters, or pick another period.' : 'Run a report to see data.' })]);
   }
   function sortBy(key, i) { const so = st.sort[key] || TABLES[key].defaultSort; st.sort[key] = so && so.i === i ? { i, dir: -so.dir } : { i, dir: 1 }; render(); }
 
@@ -445,7 +506,7 @@
     $('title').textContent = TITLES[st.view]; document.title = TITLES[st.view] + ' | PTI Shift Reports';
     const r = st.report, data = !['check', 'rules'].includes(st.view);
     $('bar').hidden = !data;
-    if (st.view === 'eld' || st.view === 'eldday') { const e = st.eld; $('period').textContent = e && !e.example ? 'Shifts that started ' + e.start + ' through ' + e.end + (e.open ? ', ' + e.open + ' driver' + (e.open > 1 ? 's' : '') + ' still on shift and not counted yet' : '') + ', loaded ' + C.fmtDT(e.loadedAt) : ''; }
+    if (st.view === 'eld' || st.view === 'eldday' || st.view === 'tscheck') { const e = st.eld; $('period').textContent = e && !e.example ? 'Shifts that started ' + e.start + ' through ' + e.end + (e.open ? ', ' + e.open + ' driver' + (e.open > 1 ? 's' : '') + ' still on shift and not counted yet' : '') + ', loaded ' + C.fmtDT(e.loadedAt) : ''; }
     else if (st.view === 'hos') { const h = st.hos; $('period').textContent = h && !h.example ? 'The 8 days ending ' + C.fmtDT(h.asOf) + '. Only the To date is used here; set it to today for the current picture.' : ''; }
     else if (st.view === 'faults') { const f = st.faults; $('period').textContent = f && !f.example ? 'Fault codes reported ' + f.start + ' through ' + f.end + ', loaded ' + C.fmtDT(f.loadedAt) + '. Driver and yard filters do not apply here.' : ''; }
     else $('period').textContent = !data ? '' : !r ? 'Loading' : (r.example ? 'Example data' : 'Shifts that started ' + r.start + ' through ' + r.end + (r.inProgress ? ', ' + r.inProgress + ' truck' + (r.inProgress > 1 ? 's' : '') + ' still out and not counted yet' : '') + ', loaded ' + C.fmtDT(r.loadedAt));
@@ -455,6 +516,7 @@
     else if (st.view === 'faults') v.appendChild(faultsView());
     else if (st.view === 'hos') v.appendChild(hosView());
     else if (st.view === 'eld' || st.view === 'eldday') v.appendChild(eldView(st.view));
+    else if (st.view === 'tscheck') v.appendChild(tsView());
     else if (!r) v.appendChild(el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.loading ? 'Loading trips and hours of service from Samsara. A long period can take a minute.' : 'Choose a period and press Run report.' })]));
     else v.appendChild(st.view === 'overview' ? overview() : st.view === 'compare' ? compareView() : tableView(st.view));
   }
