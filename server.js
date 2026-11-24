@@ -10,6 +10,7 @@ const Core = require('./public/core.js');
 const samsara = require('./lib/samsara');
 const reports = require('./lib/reports');
 const faults = require('./lib/faults');
+const hos = require('./lib/hos');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -102,6 +103,11 @@ app.get('/api/faults', async (req, res) => {
   if (Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1 > 92) return res.status(400).json({ error: 'Choose a period of 92 days or less.' });
   try { res.json(await faults.getFaults(start, end, req.query.refresh === '1')); }
   catch (e) { console.error('faults failed:', e.message); res.status(502).json({ error: e.message || 'Fault history could not be loaded.' }); }
+});
+app.get('/api/hos', async (req, res) => {
+  if (!isDate(req.query.end)) return res.status(400).json({ error: 'Choose an end date.' });
+  try { res.json(await hos.getClocks(req.query.end, req.query.refresh === '1')); }
+  catch (e) { console.error('hos failed:', e.message); res.status(502).json({ error: e.message || 'Hours of service could not be loaded.' }); }
 });
 app.get('/api/check', async (req, res) => {
   if (!LIVE) return res.json({ live: false, checks: [] });

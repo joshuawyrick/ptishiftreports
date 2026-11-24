@@ -3,8 +3,8 @@
 (function () {
   const C = Core, $ = id => document.getElementById(id);
   const D = C.fmtDurWords, mi = m => C.miles(m).toFixed(1);
-  const st = { report: null, view: 'overview', sort: {}, q: '', loading: false, status: null, direct: true, a: '', b: '', faults: null, faultsErr: '', faultsLoading: false, activeOnly: false };
-  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', sites: 'Time on site', lanes: 'Point to point', compare: 'Compare two locations', faults: 'Fault history', check: 'Connection check', rules: 'How numbers are worked out' };
+  const st = { report: null, view: 'overview', sort: {}, q: '', loading: false, status: null, direct: true, a: '', b: '', hos: null, hosErr: '', hosLoading: false, faults: null, faultsErr: '', faultsLoading: false, activeOnly: false };
+  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', sites: 'Time on site', lanes: 'Point to point', compare: 'Compare two locations', faults: 'Fault history', hos: '80-hour clock', check: 'Connection check', rules: 'How numbers are worked out' };
 
   function el(tag, attrs, kids) {
     const e = document.createElement(tag);
@@ -39,7 +39,7 @@
     if (st.loading) return;
     const start = $('start').value, end = $('end').value;
     if (!start || !end || end < start) return notice('', 'Choose a start date and an end date on or after it.');
-    st.faults = null; st.faultsErr = '';
+    st.faults = null; st.faultsErr = ''; st.hos = null; st.hosErr = '';
     st.loading = true; $('run').disabled = true; $('run').textContent = 'Loading from Samsara'; notice('', '');
     try {
       st.report = await api('/api/report?start=' + start + '&end=' + end + (refresh ? '&refresh=1' : ''));
@@ -85,7 +85,29 @@
       el('span', {}, [el('i', { style: 'background:var(--drive)' }), 'Travel']), el('span', {}, [el('i', { style: 'background:var(--site)' }), 'On site']),
       el('span', {}, [el('i', { style: 'background:var(--yard)' }), 'At yard mid-shift']), el('span', {}, [el('i', { style: 'background:var(--over)' }), '16 hour limit'])]);
   }
-  function pills(flags) { return flags.map(f => el('span', { class: 'pill' + (C.isOverLimit(f) || /^(Stop|Protect|Active)$/.test(f) ? ' hot' : ''), text: f })); }
+  function pills(flags) { return flags.map(f => el('span', { class: 'pill' + (C.isOverLimit(f) || /^(Stop|Protect|Active|Out of hours)$/.test(f) ? ' hot' : ''), text: f })); }
+
+  /* ---------- 80-hour clock (California intrastate, flammable tank vehicle) ---------- */
+  const h1 = ms => (ms / C.H).toFixed(1);
+  async function loadHos(refresh) {
+    if (st.hosLoading) return; const end = $('end').value; if (!end) return;
+    st.hosLoading = true; st.hosErr = '';
+    try { st.hos = await api('/api/hos?end=' + end + (refresh ? '&refresh=1' : '')); } catch (e) { st.hos = null; st.hosErr = e.message; }
+    finally { st.hosLoading = false; if (st.view === 'hos') render(); }
+  }
+  function hosRows() { if (!st.hos) return []; const d = $('f-driver').value; return st.hos.rows.filter(r => !d || r.driver === d); }
+  const hosStatus = r => (r.inReset ? 'On 34h reset' : r.left <= 0 ? 'Out of hours' : r.left < 16 * C.H ? 'Under 16h left' : '');
+  function hosView() {
+    if (st.hosErr) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.hosErr + ' Open Connection check for details.' })]);
+    if (!st.hos) { loadHos(); return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Loading hours-of-service logs from Samsara.' })]); }
+    if (st.hos.example) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'The 80-hour clock needs live Samsara data.' })]);
+    const R = hosRows(), tile = (v, l, alert) => el('div', { class: alert ? 'alert' : '' }, [el('b', { text: String(v) }), el('span', { text: l })]);
+    const out = R.filter(r => !r.inReset && r.left <= 0).length, low = R.filter(r => !r.inReset && r.left > 0 && r.left < 16 * C.H).length, viol = R.reduce((a, r) => a + r.overDrive + r.pastWindow, 0);
+    return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [
+      el('section', { class: 'band', style: 'grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(R.length, 'Drivers on duty in these 8 days'), tile(out, 'At or over 80 hours', out > 0), tile(low, 'Under 16 hours left'),
+        tile(R.filter(r => r.inReset).length, 'On a 34-hour reset now'), tile(viol, 'Work periods over 10h driving or past hour 16', viol > 0)]),
+      tableView('hos')]);
+  }
 
   /* ---------- fault history ---------- */
   async function loadFaults(refresh) {
@@ -193,6 +215,15 @@
         ['From', r => r.from], ['To', r => r.to], ['Trips', r => r.n, null, 1], ['Avg drive time', r => r.drive, D, 1, C.fmtDur], ['Fastest', r => r.min, D, 1, C.fmtDur], ['Slowest', r => r.max, D, 1, C.fmtDur],
         ['Avg miles', r => r.m, mi, 1, mi], ['Avg speed (mph)', r => r.mph, sp, 1], ['Avg arrive at From to depart To', r => r.span, D, 1, C.fmtDur], ['Drivers', r => r.drivers, null, 1]]
     },
+    hos: {
+      file: '80-hour-clock', rows: hosRows, defaultSort: { i: 3, dir: 1 },
+      get cols() {
+        const days = (st.hos && st.hos.dayLabels) || [];
+        return [['Driver', r => r.driver], ['Status', r => hosStatus(r), null, 0, null, 'flags'], ['On duty, 8 days (hours)', r => r.used, h1, 1], ['Hours left of 80', r => r.left, h1, 1]]
+          .concat(days.map((d, i) => [Number(d.slice(5, 7)) + '/' + Number(d.slice(8)), r => r.days[i], v => (v ? h1(v) : ''), 1, h1]))
+          .concat([['Days worked in a row', r => r.streak, null, 1], ['Last 34h reset ended', r => r.resetEnd, C.fmtDT, 1, C.fmtDTcsv], ['Over 10h driving', r => r.overDrive || null, null, 1], ['Drove past hour 16', r => r.pastWindow || null, null, 1]]);
+      }
+    },
     faults: {
       file: 'fault-history', rows: faultRows, defaultSort: { i: 6, dir: -1 },
       extra: () => el('label', { class: 'check' }, [el('input', Object.assign({ type: 'checkbox', onchange: e => { st.activeOnly = e.target.checked; render(); } }, st.activeOnly ? { checked: '' } : {})), 'Still active only']),
@@ -224,7 +255,7 @@
     return { n: rows.length, text: '﻿' + [cols.map(c => q(c[0])).join(',')].concat(rows.map(r => cols.map(c => q(csvv(c, r))).join(','))).join('\r\n') + '\r\n' };
   }
   function downloadCsv(key, msg) {
-    const out = csvText(key), r = key === 'faults' ? st.faults : st.report;
+    const out = csvText(key), r = key === 'faults' ? st.faults : key === 'hos' ? { start: st.hos.dayLabels[0], end: st.hos.dayLabels[7] } : st.report;
     const a = el('a', { href: URL.createObjectURL(new Blob([out.text], { type: 'text/csv;charset=utf-8' })), download: 'pti-' + TABLES[key].file + '_' + r.start + '_to_' + r.end + '.csv' });
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     msg.textContent = 'Downloaded ' + out.n.toLocaleString() + ' rows.';
@@ -248,7 +279,7 @@
     return el('section', { class: 'panel' }, [
       el('div', { class: 'tools' }, [search, el('span', { class: 'count', text: rows.length.toLocaleString() + (rows.length === 1 ? ' row' : ' rows') + (rows.length > max ? ' (first ' + max.toLocaleString() + ' shown, the CSV has all)' : '') }),
         key === 'shifts' ? legend() : null, t.extra ? t.extra() : null, el('span', { class: 'grow', style: 'flex:1' }), msg, el('button', { type: 'button', class: 'btn', text: 'Download CSV', onclick: () => downloadCsv(key, msg) })]),
-      rows.length ? el('div', { class: 'scroll' }, [el('table', {}, [el('thead', {}, [head]), body])]) : el('div', { class: 'empty', text: key === 'faults' ? 'No fault codes were reported in this period with these filters.' : st.report ? 'No rows match. Clear the search or filters, or pick another period.' : 'Run a report to see data.' })]);
+      rows.length ? el('div', { class: 'scroll' }, [el('table', {}, [el('thead', {}, [head]), body])]) : el('div', { class: 'empty', text: key === 'hos' ? 'No drivers were on duty in these 8 days.' : key === 'faults' ? 'No fault codes were reported in this period with these filters.' : st.report ? 'No rows match. Clear the search or filters, or pick another period.' : 'Run a report to see data.' })]);
   }
   function sortBy(key, i) { const so = st.sort[key] || TABLES[key].defaultSort; st.sort[key] = so && so.i === i ? { i, dir: -so.dir } : { i, dir: 1 }; render(); }
 
@@ -352,6 +383,7 @@
       'Trucks with no driver recorded and yard-to-yard moves with no saved stops are left out. Trucks still out on a shift are not counted until they return.',
       'ELD columns come from the driver’s hours-of-service log: on duty from the end of the last rest of 5 hours or more before the shift until the next one after it. Rest before shift is the length of that earlier rest; "over" means it began before the loaded days. Personal conveyance counts as rest.',
       'Point to point: each saved stop to the next saved stop, including the yard. Average speed is total miles divided by total drive time. "Arrive at From to depart To" is time on site at the first place, plus the drive, plus time on site at the second. With "Direct trips only" on, trips that paused at an unsaved place on the way are left out so averages are not stretched.',
+      '80-hour clock: built for California intrastate drivers of flammable-liquid tank vehicles. On-duty time (driving plus on duty, from the ELD log) is added up over the 8 calendar days shown, Pacific time. A rest of 34 hours or more starts a fresh 80, so only time after the latest reset is counted. A work period runs between rests of 10 hours or more; it is counted as over a limit if it has more than 10 hours of driving, or any driving more than 16 hours after it began. Personal conveyance counts as rest. This is a planning aid, not a legal log; the ELD is the record.',
       'Fault history: Samsara records the active fault codes on a truck each time they change. Each row is one stretch where a code stayed active: first seen, last seen, and when it cleared. "Active" means the code was still present in the last reading of the period. Trailers are not included because they do not report engine fault codes.',
       'Flags: over 16 hours yard to yard, over 10 hours of drive time, under 10 hours of rest before the shift, and a 34-hour restart before the shift.'];
     return el('section', { class: 'panel' }, [el('div', { class: 'body' }, [el('ul', { class: 'rules' }, items.map(t => el('li', { text: t })))])]);
@@ -363,12 +395,14 @@
     $('title').textContent = TITLES[st.view]; document.title = TITLES[st.view] + ' | PTI Shift Reports';
     const r = st.report, data = !['check', 'rules'].includes(st.view);
     $('bar').hidden = !data;
-    if (st.view === 'faults') { const f = st.faults; $('period').textContent = f && !f.example ? 'Fault codes reported ' + f.start + ' through ' + f.end + ', loaded ' + C.fmtDT(f.loadedAt) + '. Driver and yard filters do not apply here.' : ''; }
+    if (st.view === 'hos') { const h = st.hos; $('period').textContent = h && !h.example ? 'The 8 days ending ' + C.fmtDT(h.asOf) + '. Only the To date is used here; set it to today for the current picture.' : ''; }
+    else if (st.view === 'faults') { const f = st.faults; $('period').textContent = f && !f.example ? 'Fault codes reported ' + f.start + ' through ' + f.end + ', loaded ' + C.fmtDT(f.loadedAt) + '. Driver and yard filters do not apply here.' : ''; }
     else $('period').textContent = !data ? '' : !r ? 'Loading' : (r.example ? 'Example data' : 'Shifts that started ' + r.start + ' through ' + r.end + (r.inProgress ? ', ' + r.inProgress + ' truck' + (r.inProgress > 1 ? 's' : '') + ' still out and not counted yet' : '') + ', loaded ' + C.fmtDT(r.loadedAt));
     const v = $('view'); v.textContent = '';
     if (st.view === 'check') v.appendChild(checkView());
     else if (st.view === 'rules') v.appendChild(rulesView());
     else if (st.view === 'faults') v.appendChild(faultsView());
+    else if (st.view === 'hos') v.appendChild(hosView());
     else if (!r) v.appendChild(el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.loading ? 'Loading trips and hours of service from Samsara. A long period can take a minute.' : 'Choose a period and press Run report.' })]));
     else v.appendChild(st.view === 'overview' ? overview() : st.view === 'compare' ? compareView() : tableView(st.view));
   }

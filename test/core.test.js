@@ -58,3 +58,16 @@ assert.ok(e200.active && e200.count === 2 && e200.lamps.includes('Stop'));
 const first100 = ep.filter(e => e.code === 'SPN 100 / FMI 1').sort((a, b) => a.first - b.first)[0];
 assert.ok(!first100.active && first100.cleared === Date.parse('2026-11-21T09:00:00Z') && first100.count === 3);
 console.log('Fault history checks passed.');
+
+// 80-hour clock
+const { driverClock } = require('../lib/hos');
+const HR = 3600000, d0 = Core.laMidnight('2026-11-16'), ds = Array.from({ length: 8 }, (_, i) => Core.laMidnight(Core.addDays('2026-11-16', i)));
+const mk = []; // 6 days of 14h on duty (11h drive), 10h off between, then a 34h+ rest, then one 5h day
+for (let i = 0; i < 6; i++) { const s = d0 + i * 24 * HR + 4 * HR; mk.push({ s: s, e: s + 11 * HR, c: 'drive' }, { s: s + 11 * HR, e: s + 14 * HR, c: 'duty' }, { s: s + 14 * HR, e: s + 24 * HR, c: 'rest' }); }
+const asOf1 = d0 + 6 * 24 * HR + 2 * HR;
+const c1 = driverClock(mk.map(x => Object.assign({}, x)), asOf1, ds);
+assert.strictEqual(c1.used, 84 * HR, '6 x 14h = 84h, over 80'); assert.ok(c1.left < 0); assert.strictEqual(c1.overDrive, 6); assert.strictEqual(c1.pastWindow, 0);
+const mk2 = mk.slice(0, -1).concat([{ s: d0 + 5 * 24 * HR + 18 * HR, e: d0 + 7 * 24 * HR + 6 * HR, c: 'rest' }, { s: d0 + 7 * 24 * HR + 6 * HR, e: d0 + 7 * 24 * HR + 11 * HR, c: 'duty' }]);
+const c2 = driverClock(mk2, d0 + 7 * 24 * HR + 12 * HR, ds);
+assert.strictEqual(c2.used, 5 * HR, 'only time after the 36h reset counts'); assert.ok(c2.resetEnd);
+console.log('80-hour clock checks passed.');
