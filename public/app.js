@@ -4,7 +4,7 @@
   const C = Core, $ = id => document.getElementById(id);
   const D = C.fmtDurWords, mi = m => C.miles(m).toFixed(1);
   const st = { report: null, view: 'overview', sort: {}, q: '', loading: false, status: null, direct: true, a: '', b: '', hos: null, hosErr: '', hosLoading: false, eld: null, eldErr: '', eldLoading: false, reviewOnly: false, ts: null, tsMsg: '', tol: 30, diffOnly: false, faults: null, faultsErr: '', faultsLoading: false, activeOnly: false };
-  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', sites: 'Time on site', lanes: 'Point to point', compare: 'Compare two locations', faults: 'Fault history', hos: '80-hour clock', eld: 'Shift hours (ELD)', eldday: 'Hours by driver and day', tscheck: 'Compare to timesheets', check: 'Connection check', rules: 'How numbers are worked out' };
+  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', sites: 'Time on site', lanes: 'Point to point', compare: 'Compare two locations', faults: 'Fault history', hos: '80-hour clock', eld: 'Shift hours (ELD)', eldday: 'Hours by driver and day', tscheck: 'Compare to timesheets', history: 'History', check: 'Connection check', rules: 'How numbers are worked out' };
 
   function el(tag, attrs, kids) {
     const e = document.createElement(tag);
@@ -27,7 +27,7 @@
   const NS = 'http://www.w3.org/2000/svg';
   function svg(tag, attrs, kids) { const e = document.createElementNS(NS, tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); for (const c of [].concat(kids || [])) if (c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); return e; }
   function icon(name) { return svg('svg', { class: 'ic', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, [svg('path', { d: ICONS[name] || ICONS.list })]); }
-  const NAV_ICONS = { overview: 'home', eld: 'clock', eldday: 'cal', tscheck: 'sheet', shifts: 'truck', stops: 'pin', daily: 'cal', totals: 'person', sites: 'clock', lanes: 'target', compare: 'swap', hos: 'shield', faults: 'alert', check: 'check', rules: 'list' };
+  const NAV_ICONS = { overview: 'home', eld: 'clock', eldday: 'cal', tscheck: 'sheet', shifts: 'truck', stops: 'pin', daily: 'cal', totals: 'person', sites: 'clock', lanes: 'target', compare: 'swap', hos: 'shield', faults: 'alert', history: 'cal', check: 'check', rules: 'list' };
   function tileIcon(label) {
     const l = label.toLowerCase();
     return /limit|review|over|fault|lamp|missing|higher/.test(l) ? 'alert' : /driver/.test(l) ? 'person' : /truck/.test(l) ? 'truck' : /mile/.test(l) ? 'road' : /stop|site/.test(l) && !/time/.test(l) ? 'pin' : /hour|time|average|reset|clock/.test(l) ? 'clock' : /match/.test(l) ? 'check' : /shift|day|episode/.test(l) ? 'cal' : 'chart';
@@ -127,7 +127,7 @@
       fillFilters();
       if (st.report.example) notice('', 'Showing two example shifts from Nov 23, 2026. Add the Samsara API key in Replit Secrets to see live data.');
       else if (st.report.issues.length) notice('', 'Some data is missing, so totals may be incomplete. ' + st.report.issues.join(' '));
-    } catch (e) { notice('bad', e.message + ' Open Connection check for details.'); }
+    } catch (e) { notice('bad', e.message + (/Choose a|History/.test(e.message) ? '' : ' Open Connection check for details.')); }
     finally { st.loading = false; $('run').disabled = false; $('run').textContent = 'Run report'; render(); }
   }
   function fillFilters() {
@@ -564,6 +564,31 @@
     }).catch(e => { panel.querySelector('.hint').textContent = ''; list.appendChild(el('li', {}, [el('span', { class: 'no', text: '✗' }), el('b', { text: 'Connection' }), el('span', { text: e.message })])); });
     return panel;
   }
+  let histTimer = null;
+  function historyView() {
+    const box = el('div', { style: 'display:flex;flex-direction:column;gap:14px' }, [el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Checking saved history.' })])]);
+    const draw = h => {
+      if (st.view !== 'history') return; box.textContent = '';
+      const c = h.coverage || {}, j = h.job || {};
+      box.appendChild(el('section', { class: 'band', style: 'grid-template-columns:repeat(4,minmax(0,1fr))' }, [tile(h.saved ? 'On' : 'Off', 'Saved history', !h.saved), tile(c.first || 'None', 'First day saved'), tile(c.last || 'None', 'Last day saved'), tile((c.days || 0).toLocaleString(), 'Days saved')]));
+      const from = el('input', { type: 'date', value: C.addDays(today(), -365) }), to = el('input', { type: 'date', value: C.addDays(today(), -1) });
+      const replace = el('input', { type: 'checkbox' }), msg = el('span', { class: 'msg', role: 'status' });
+      const go = el('button', { type: 'button', class: 'btn primary', text: j.running ? 'Loading' : 'Load history', onclick: async () => {
+        try { const res = await fetch('/api/history/load', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start: from.value, end: to.value, replace: replace.checked }) }); const out = await res.json(); if (!res.ok) throw new Error(out.error); poll(); }
+        catch (e) { msg.textContent = e.message; } } });
+      if (j.running) go.disabled = true;
+      msg.textContent = j.running ? 'Loading ' + j.from + ' through ' + j.to + ': ' + j.done + ' of ' + j.total + ' days. You can leave this page; it keeps going.' : j.error ? 'Loading stopped: ' + j.error : j.finishedAt ? 'Finished loading ' + j.from + ' through ' + j.to + '.' : '';
+      box.appendChild(el('section', { class: 'panel' }, [el('header', {}, [el('h2', {}, [icon('cal'), 'Load past days from Samsara'])]),
+        el('div', { class: 'tools', style: 'border:0' }, [el('label', { class: 'field' }, ['From', from]), el('label', { class: 'field' }, ['To', to]), el('label', { class: 'check' }, [replace, 'Replace days already saved']), go, msg]),
+        el('div', { class: 'body', style: 'padding-top:0' }, [el('ul', { class: 'rules' }, [
+          h.saved ? 'Saved days open without calling Samsara, so long periods load quickly. Reports can cover up to ' + h.maxDays + ' days.' : 'No database is connected, so nothing is kept between restarts and reports are limited to ' + h.maxDays + ' days. Add the Replit database to turn saved history on.',
+          'The most recent ' + h.settleDays + ' days are pulled again each time you press Run report, because drivers and the office still edit recent logs.',
+          'Tick "Replace days already saved" to pull older days again after logs were corrected in Samsara.',
+          'A year of history can take several minutes to load the first time.'].map(t => el('li', { text: t })))])]));
+    };
+    const poll = () => api('/api/history').then(h => { draw(h); clearTimeout(histTimer); if (h.job && h.job.running && st.view === 'history') histTimer = setTimeout(poll, 2500); }).catch(e => { box.textContent = ''; box.appendChild(el('section', { class: 'panel' }, [el('div', { class: 'empty', text: e.message })])); });
+    poll(); return box;
+  }
   function rulesView() {
     const items = [
       'A shift runs from when a truck leaves a yard (Bakersfield, Santa Maria or Coalinga) until it is back at one. Hours worked is that yard-to-yard time, and the shift date is the day the shift started, Pacific time.',
@@ -583,7 +608,7 @@
   function render() {
     document.querySelectorAll('[data-view]').forEach(b => { if (b.dataset.view === st.view) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
     $('title').textContent = TITLES[st.view]; document.title = TITLES[st.view] + ' | PTI Shift Reports';
-    const r = st.report, data = !['check', 'rules'].includes(st.view);
+    const r = st.report, data = !['check', 'rules', 'history'].includes(st.view);
     $('bar').hidden = !data;
     if (st.view === 'eld' || st.view === 'eldday' || st.view === 'tscheck') { const e = st.eld; $('period').textContent = e && !e.example ? 'Shifts that started ' + e.start + ' through ' + e.end + (e.open ? ', ' + e.open + ' driver' + (e.open > 1 ? 's' : '') + ' still on shift and not counted yet' : '') + ', loaded ' + C.fmtDT(e.loadedAt) : ''; }
     else if (st.view === 'hos') { const h = st.hos; $('period').textContent = h && !h.example ? 'The 8 days ending ' + C.fmtDT(h.asOf) + '. Only the To date is used here; set it to today for the current picture.' : ''; }
@@ -591,6 +616,7 @@
     else $('period').textContent = !data ? '' : !r ? 'Loading' : (r.example ? 'Example data' : 'Shifts that started ' + r.start + ' through ' + r.end + (r.inProgress ? ', ' + r.inProgress + ' truck' + (r.inProgress > 1 ? 's' : '') + ' still out and not counted yet' : '') + ', loaded ' + C.fmtDT(r.loadedAt));
     const v = $('view'); v.textContent = ''; v.style.cssText = 'display:flex;flex-direction:column;gap:14px';
     if (st.view === 'check') v.appendChild(checkView());
+    else if (st.view === 'history') v.appendChild(historyView());
     else if (st.view === 'rules') v.appendChild(rulesView());
     else if (st.view === 'faults') v.appendChild(faultsView());
     else if (st.view === 'hos') v.appendChild(hosView());

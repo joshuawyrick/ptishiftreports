@@ -12,6 +12,9 @@ const reports = require('./lib/reports');
 const faults = require('./lib/faults');
 const hos = require('./lib/hos');
 const eld = require('./lib/eldshifts');
+const raw = require('./lib/raw');
+const store = require('./lib/store');
+const MAX_DAYS = () => (store.usingDb() ? 400 : 92);
 
 const app = express();
 app.set('trust proxy', 1);
@@ -90,32 +93,43 @@ app.get('/api/report', async (req, res) => {
   const { start, end } = req.query;
   if (!isDate(start) || !isDate(end) || end < start) return res.status(400).json({ error: 'Choose a start date and an end date on or after it.' });
   const days = Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1;
-  if (days > 92) return res.status(400).json({ error: 'Choose a period of 92 days or less.' });
+  if (days > MAX_DAYS()) return res.status(400).json({ error: 'Choose a period of ' + MAX_DAYS() + ' days or less.' });
   try {
     res.json(await reports.getReport(start, end, req.query.refresh === '1'));
   } catch (e) {
     console.error('report failed:', e.message);
-    res.status(502).json({ error: e.message || 'The report could not be loaded.' });
+    res.status(e.status === 409 ? 409 : 502).json({ error: e.message || 'The report could not be loaded.' });
   }
 });
 app.get('/api/faults', async (req, res) => {
   const { start, end } = req.query;
   if (!isDate(start) || !isDate(end) || end < start) return res.status(400).json({ error: 'Choose a start date and an end date on or after it.' });
-  if (Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1 > 92) return res.status(400).json({ error: 'Choose a period of 92 days or less.' });
+  if (Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1 > MAX_DAYS()) return res.status(400).json({ error: 'Choose a period of ' + MAX_DAYS() + ' days or less.' });
   try { res.json(await faults.getFaults(start, end, req.query.refresh === '1')); }
-  catch (e) { console.error('faults failed:', e.message); res.status(502).json({ error: e.message || 'Fault history could not be loaded.' }); }
+  catch (e) { console.error('faults failed:', e.message); res.status(e.status === 409 ? 409 : 502).json({ error: e.message || 'Fault history could not be loaded.' }); }
 });
 app.get('/api/eldshifts', async (req, res) => {
   const { start, end } = req.query;
   if (!isDate(start) || !isDate(end) || end < start) return res.status(400).json({ error: 'Choose a start date and an end date on or after it.' });
-  if (Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1 > 92) return res.status(400).json({ error: 'Choose a period of 92 days or less.' });
+  if (Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1 > MAX_DAYS()) return res.status(400).json({ error: 'Choose a period of ' + MAX_DAYS() + ' days or less.' });
   try { res.json(await eld.getEldShifts(start, end, req.query.refresh === '1')); }
-  catch (e) { console.error('eld shifts failed:', e.message); res.status(502).json({ error: e.message || 'Shift hours could not be loaded.' }); }
+  catch (e) { console.error('eld shifts failed:', e.message); res.status(e.status === 409 ? 409 : 502).json({ error: e.message || 'Shift hours could not be loaded.' }); }
 });
 app.get('/api/hos', async (req, res) => {
   if (!isDate(req.query.end)) return res.status(400).json({ error: 'Choose an end date.' });
   try { res.json(await hos.getClocks(req.query.end, req.query.refresh === '1')); }
-  catch (e) { console.error('hos failed:', e.message); res.status(502).json({ error: e.message || 'Hours of service could not be loaded.' }); }
+  catch (e) { console.error('hos failed:', e.message); res.status(e.status === 409 ? 409 : 502).json({ error: e.message || 'Hours of service could not be loaded.' }); }
+});
+app.get('/api/history', async (req, res) => {
+  try { res.json({ live: LIVE, saved: await store.saved(), coverage: await store.coverage('trips'), job: raw.job, maxDays: MAX_DAYS(), settleDays: raw.SETTLE_DAYS }); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
+app.post('/api/history/load', express.json(), (req, res) => {
+  const { start, end, replace } = req.body || {};
+  if (!LIVE) return res.status(400).json({ error: 'History needs live Samsara data.' });
+  if (!isDate(start) || !isDate(end) || end < start) return res.status(400).json({ error: 'Choose a start date and an end date on or after it.' });
+  if (Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1 > 800) return res.status(400).json({ error: 'Load 800 days or less at a time.' });
+  res.json({ job: raw.startBackfill(start, end, !!replace) });
 });
 app.get('/api/check', async (req, res) => {
   if (!LIVE) return res.json({ live: false, checks: [] });
@@ -126,6 +140,7 @@ app.get('/api/check', async (req, res) => {
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', maxAge: 0 }));
 
 const port = Number(process.env.PORT) || 3000;
+store.init().then(ok => console.log(ok ? 'Saved history: database connected' : 'Saved history: off (no DATABASE_URL), keeping recent days in memory only'));
 app.listen(port, '0.0.0.0', () => {
   console.log('PTI Shift Reports running on port ' + port + (LIVE ? ' with live Samsara data' : ' with example data (no SAMSARA_API_TOKEN yet)'));
   if (LIVE && !PASSWORD) console.log('APP_PASSWORD is not set: the app is locked until it is.');
