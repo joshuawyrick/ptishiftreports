@@ -187,3 +187,97 @@ tr.ret td { color: var(--muted); }
 @media (prefers-reduced-motion: no-preference) { .drawer { animation: slide .16s ease-out; } @keyframes slide { from { transform: translateX(24px); opacity: 0; } } }
 @media (prefers-reduced-motion: reduce) { .check input::after { transition: none; } }
 @media print { :root { color-scheme: light; } .side, .bar, .tools, .banner { display: none; } .app { display: block; } .scroll { max-height: none; overflow: visible; } body, .panel { background: #fff; color: #000; } }
+
+/* Reference-image visual refresh — no reporting or interaction logic. */
+:root {
+  --paper:#031226; --surface:#071b34; --surface-2:#102b4c; --ink:#f2f6ff;
+  --muted:#b1c3da; --rule:#365e8c; --rule-soft:#203a56;
+  --steel:#04172d; --steel-2:#12375a; --steel-ink:#dbe7f7;
+  --blue:#087cf2; --blue-2:#64c5ff; --red:#ed202d; --red-2:#ff666e;
+  --link:#71c6ff; --idle:#183451; --over:#ff8985;
+  --glow:0 0 0 1px #79bbff16, inset 0 1px 0 #a9dcff35, 0 4px 16px #0006;
+}
+body { background:radial-gradient(ellipse at 60% 0%,#103257 0%,transparent 50%),var(--paper); font-size:13px; }
+.app { grid-template-columns:208px minmax(0,1fr); }
+.side { background:linear-gradient(155deg,#061a33,#031327 70%); border-right:1px solid #255780; box-shadow:5px 0 20px #0003; }
+.brand { min-height:108px; padding:13px 15px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid #2386bb; }
+.brand-logo { width:100%; max-width:250px; height:auto; display:block; object-fit:contain; }
+.nav { padding:9px 8px; gap:2px; scrollbar-width:thin; }
+.nav h2 { color:#a7c0db; opacity:1; text-transform:uppercase; letter-spacing:.08em; font-size:10px; margin:12px 10px 3px; }
+.nav button { padding:8px 10px; line-height:1.25; border:1px solid transparent; border-radius:6px; color:#e6efff; }
+.nav button svg.ic { width:21px;height:21px; color:#c6d9ef; }
+.nav button[aria-current="page"] { background:linear-gradient(100deg,#a51b2a,#e52a35 65%,#8e1422); border-color:#f7626b; box-shadow:inset 0 1px 0 #ffb4b455,0 0 13px #ed202d38; }
+.nav button[aria-current="page"] svg.ic { color:white; }
+.side-foot { border-top:1px solid #2479a7; background:#031225; padding:13px 15px; }
+.banner { height:108px; padding:0 clamp(20px,5vw,76px); border-bottom:2px solid #2688e2; background:linear-gradient(90deg,#06162d00 35%,#06182d 67%,#041225 100%),url('/oilfield-banner.png') left center/auto 100% no-repeat,#06182d; isolation:isolate; }
+.banner svg.art { opacity:0; }
+.banner::after { content:""; position:absolute; right:22px; top:-25px; bottom:-25px; width:38px; transform:skewX(-36deg); background:linear-gradient(90deg,#077cfa 0 55%,#062c63 55% 73%,#f22330 73% 91%,transparent 91%); opacity:.9; z-index:-1; }
+.banner .t { padding-right:24px; }
+.banner .t b { font-size:clamp(30px,3vw,46px); letter-spacing:-.025em; text-shadow:0 3px 12px #000; }
+.banner .t span { font-size:clamp(13px,1.4vw,20px); color:#e4efff; }
+.bar { margin:11px 13px 0; padding:10px 12px; gap:8px 10px; border:1px solid #416b9a; border-radius:10px; background:linear-gradient(155deg,#112d4b,#07182d 75%); box-shadow:var(--glow); }
+.bar .grow { flex:1 1 0; }
+.field { font-size:12px; color:#e5efff; gap:4px; }
+.field input,.field select,.tools input[type="search"],.gate input { background:linear-gradient(180deg,#142f50,#071a33); border:1px solid #527da7; box-shadow:inset 0 1px 4px #0005; min-height:34px; padding:6px 9px; }
+select option { background:#102943;color:#f2f6ff; }
+.bar .field { min-width:0; }
+.bar .field select { width:100%; min-width:96px; max-width:170px; }
+.bar .field input { width:130px; }
+.btn { background:linear-gradient(180deg,#163b62,#081c36); border-color:#6490bb; box-shadow:inset 0 1px 0 #b9e1ff24; white-space:nowrap; }
+.btn.primary { background:linear-gradient(180deg,#168fff,#0753ba); border-color:#55c4ff; box-shadow:0 0 12px #008eff45,inset 0 1px 0 #d4efff55; }
+#run::before { content:'▶'; margin-right:7px; font-size:11px; }
+.check { white-space:normal; font-size:12px; }
+.content { padding:13px 13px 24px; gap:10px; }
+.pagehead h1 { font-style:normal; font-weight:800; font-size:23px; }
+.pagehead p { font-size:11px; }
+#view { min-width:0; gap:13px!important; }
+.band { gap:11px; }
+.band > div { padding:12px 10px; min-height:78px; gap:10px; background:radial-gradient(ellipse at 95% 0%,#0865ae35,transparent 70%),linear-gradient(150deg,#102b4b,#04162c 80%); border:1px solid #4eaef2; box-shadow:inset 0 1px 4px #45b6ff55,0 0 9px #168fff25,0 4px 12px #0006; }
+.band > div:nth-child(3n+1),.band > div.alert { border-color:#ef535e; background:radial-gradient(ellipse at 0% 0%,#e72d3830,transparent 65%),linear-gradient(150deg,#142c49,#04162c); box-shadow:inset 0 1px 5px #ff42444a,0 0 10px #ee2c3425,0 4px 12px #0006; }
+.band .kic { color:#24afff; filter:drop-shadow(0 0 5px #159eff66); }
+.band > div:nth-child(3n+1) .kic,.band > div.alert .kic { color:#ff444e; filter:drop-shadow(0 0 5px #f5223355); }
+.band .kic svg.ic { width:32px;height:32px; stroke-width:2; }
+.band b { font-size:clamp(19px,1.8vw,29px); white-space:normal; overflow-wrap:anywhere; }
+.band span { font-size:11px; line-height:1.25; }
+.band .kt { gap:4px; }
+.panel { background:linear-gradient(155deg,#0c2542,#04162c 65%); border-color:#4a78a4; border-radius:11px; box-shadow:var(--glow); }
+.panel > header { padding:10px 13px; border-bottom:1px solid #2e4a66; }
+.panel h2 { font-style:normal; font-size:17px; font-weight:800; }
+.panel h2 svg.ic { color:#ff4652; filter:drop-shadow(0 0 3px #ec263e66); }
+.panel .body { padding:12px 13px; }
+.tools { padding:10px 12px; gap:9px; }
+.tools input[type="search"] { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b1c3da' stroke-width='2'%3E%3Ccircle cx='10' cy='10' r='6'/%3E%3Cpath d='m15 15 6 6'/%3E%3C/svg%3E"),linear-gradient(180deg,#142f50,#071a33); background-position:9px center,center; background-size:16px,auto; background-repeat:no-repeat; padding-left:32px; }
+.tools > .btn:last-child::before { content:'↓'; margin-right:7px; font-weight:800; }
+.scroll { margin:0 8px 8px; border:1px solid #355c86; border-radius:7px; max-height:clamp(290px,38vh,470px); scrollbar-color:#6798c4 #081c33; scrollbar-width:thin; }
+table { font-size:12px; }
+th,td { padding:6px 9px; border-color:#172e49; }
+thead th { background:#102c4b; border-bottom:1px solid #426a93; }
+th button { color:#e7f0ff; font-size:11px; }
+tbody tr:nth-child(odd) td { background:#06182e; }
+tbody tr:nth-child(even) td { background:#102844; }
+tbody tr:hover td,tbody tr:focus-visible td { background:#114d98; color:#fff; }
+tr.ret td { color:#b8c9dc; }
+.grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.rank { grid-template-columns:minmax(65px,1.2fr) minmax(0,1fr) auto; font-size:12px; gap:10px 8px; }
+.rank .track { height:13px; background:#102944; }
+.rank .track i { border:1px solid #ff7880; box-shadow:inset 0 1px 2px #ffb6b455; }
+.rank.blue .track i { border-color:#70baff; }
+.donut { gap:10px; justify-content:center; }
+.donut svg { width:clamp(105px,10vw,150px); height:auto; filter:drop-shadow(0 0 4px #098aff33); }
+.donut ul { gap:7px; font-size:12px; }
+.line svg { height:164px; }
+.line svg path[stroke] { filter:drop-shadow(0 0 3px #ff333d); }
+.drawer { background:linear-gradient(150deg,#102b4a,#06192e); }
+.gate { background:radial-gradient(ellipse at 70% 35%,#12365c,#031226 68%); }
+.gate .left { background:linear-gradient(180deg,#06182d44,#06182d 65%),url('/oilfield-banner.png') center top/auto 42% no-repeat,#06182d; border-right:1px solid #4279a6; }
+.gate .left .brand-logo { max-width:320px; filter:drop-shadow(0 3px 8px #000); }
+.gate .right { justify-content:center; }
+.gate form,.gate .box { width:min(440px,100%); padding:30px; background:linear-gradient(145deg,#142e4c,#07182e); border:1px solid #568abd; border-radius:14px; box-shadow:var(--glow); }
+.gate h1 { font-style:normal; }
+:focus-visible { outline:2px solid #9bd9ff; outline-offset:3px; }
+@media(max-width:1350px){ .bar .grow { display:none; } .band { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(min-width:1351px) and (max-width:1550px){ .bar { gap:7px; } .bar .field input { width:120px; } .bar .grow { display:none; } }
+@media(max-width:1100px){ .grid3 { grid-template-columns:repeat(2,minmax(0,1fr)); } .grid3 > :last-child:nth-child(odd) { grid-column:1/-1; } }
+@media(max-width:900px){ .app { grid-template-columns:minmax(0,1fr); } .brand { min-height:0; justify-content:flex-start; padding:10px 15px; } .brand-logo { max-width:180px; } .side { height:auto;position:static; } .nav { display:flex; flex-direction:row; flex-wrap:nowrap; overflow-x:auto; padding:8px; } .nav button { flex:none; white-space:nowrap; min-height:40px; } .side-foot { display:flex;align-items:center;justify-content:space-between; padding:7px 12px; } .side-foot form { margin:0; } .banner { height:90px; } .bar { position:static; } .band { grid-template-columns:repeat(2,minmax(0,1fr)); } .band b { font-size:24px; } .gate .left { min-height:200px; } }
+@media(max-width:550px){ .banner { height:86px; padding:0 10px; } .banner .t { padding-right:15px; } .banner .t b { font-size:29px; } .banner::after { right:4px; width:16px; } .bar { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); margin:8px; padding:9px; } .bar .field input,.bar .field select { width:100%; max-width:none; min-width:0; } .bar .field input,.bar .field select,.bar .btn { min-height:40px; } .content { padding:8px; } .band { gap:8px; } .band > div { min-height:75px; padding:9px 8px; gap:7px; } .band .kic svg.ic { width:26px;height:26px; } .band b { font-size:21px; } .grid3,.grid2 { grid-template-columns:minmax(0,1fr); } .grid3 > :last-child:nth-child(odd) { grid-column:auto; } .tools input[type="search"] { flex-basis:100%; max-width:none; } .scroll { max-height:420px; } .gate .right { padding:20px 14px; } .gate form,.gate .box { padding:22px; } .checks li { grid-template-columns:20px minmax(0,1fr); } .checks li > :last-child { grid-column:2; } }
+@media print { body,.panel,.band > div,tbody tr:nth-child(n) td,thead th { background:white!important;color:black!important;box-shadow:none!important; } th button,.band span,.pagehead p,.panel .hint { color:black!important; } .scroll { max-height:none;overflow:visible;margin:0; } .content { padding:0; } .side,.bar,.banner,.tools { display:none!important; } }

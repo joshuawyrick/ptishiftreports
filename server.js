@@ -69,7 +69,7 @@ app.post('/login', (req, res) => {
 app.post('/logout', (req, res) => { res.clearCookie('pti'); res.redirect('/login'); });
 
 /* files the sign-in page itself needs */
-app.get(['/styles.css', '/favicon.svg'], (req, res) => res.sendFile(page(req.path.slice(1))));
+app.get(['/styles.css', '/favicon.svg', '/pti-logo.png', '/oilfield-banner.png'], (req, res) => res.sendFile(page(req.path.slice(1))));
 
 /* gate: live data is never shown without the password */
 app.use((req, res, next) => {
