@@ -11,6 +11,7 @@ const samsara = require('./lib/samsara');
 const reports = require('./lib/reports');
 const faults = require('./lib/faults');
 const hos = require('./lib/hos');
+const eld = require('./lib/eldshifts');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -103,6 +104,13 @@ app.get('/api/faults', async (req, res) => {
   if (Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1 > 92) return res.status(400).json({ error: 'Choose a period of 92 days or less.' });
   try { res.json(await faults.getFaults(start, end, req.query.refresh === '1')); }
   catch (e) { console.error('faults failed:', e.message); res.status(502).json({ error: e.message || 'Fault history could not be loaded.' }); }
+});
+app.get('/api/eldshifts', async (req, res) => {
+  const { start, end } = req.query;
+  if (!isDate(start) || !isDate(end) || end < start) return res.status(400).json({ error: 'Choose a start date and an end date on or after it.' });
+  if (Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1 > 92) return res.status(400).json({ error: 'Choose a period of 92 days or less.' });
+  try { res.json(await eld.getEldShifts(start, end, req.query.refresh === '1')); }
+  catch (e) { console.error('eld shifts failed:', e.message); res.status(502).json({ error: e.message || 'Shift hours could not be loaded.' }); }
 });
 app.get('/api/hos', async (req, res) => {
   if (!isDate(req.query.end)) return res.status(400).json({ error: 'Choose an end date.' });

@@ -3,8 +3,8 @@
 (function () {
   const C = Core, $ = id => document.getElementById(id);
   const D = C.fmtDurWords, mi = m => C.miles(m).toFixed(1);
-  const st = { report: null, view: 'overview', sort: {}, q: '', loading: false, status: null, direct: true, a: '', b: '', hos: null, hosErr: '', hosLoading: false, faults: null, faultsErr: '', faultsLoading: false, activeOnly: false };
-  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', sites: 'Time on site', lanes: 'Point to point', compare: 'Compare two locations', faults: 'Fault history', hos: '80-hour clock', check: 'Connection check', rules: 'How numbers are worked out' };
+  const st = { report: null, view: 'overview', sort: {}, q: '', loading: false, status: null, direct: true, a: '', b: '', hos: null, hosErr: '', hosLoading: false, eld: null, eldErr: '', eldLoading: false, reviewOnly: false, faults: null, faultsErr: '', faultsLoading: false, activeOnly: false };
+  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', sites: 'Time on site', lanes: 'Point to point', compare: 'Compare two locations', faults: 'Fault history', hos: '80-hour clock', eld: 'Shift hours (ELD)', eldday: 'Hours by driver and day', check: 'Connection check', rules: 'How numbers are worked out' };
 
   function el(tag, attrs, kids) {
     const e = document.createElement(tag);
@@ -39,7 +39,7 @@
     if (st.loading) return;
     const start = $('start').value, end = $('end').value;
     if (!start || !end || end < start) return notice('', 'Choose a start date and an end date on or after it.');
-    st.faults = null; st.faultsErr = ''; st.hos = null; st.hosErr = '';
+    st.faults = null; st.faultsErr = ''; st.hos = null; st.hosErr = ''; st.eld = null; st.eldErr = '';
     st.loading = true; $('run').disabled = true; $('run').textContent = 'Loading from Samsara'; notice('', '');
     try {
       st.report = await api('/api/report?start=' + start + '&end=' + end + (refresh ? '&refresh=1' : ''));
@@ -85,7 +85,38 @@
       el('span', {}, [el('i', { style: 'background:var(--drive)' }), 'Travel']), el('span', {}, [el('i', { style: 'background:var(--site)' }), 'On site']),
       el('span', {}, [el('i', { style: 'background:var(--yard)' }), 'At yard mid-shift']), el('span', {}, [el('i', { style: 'background:var(--over)' }), '16 hour limit'])]);
   }
-  function pills(flags) { return flags.map(f => el('span', { class: 'pill' + (C.isOverLimit(f) || /^(Stop|Protect|Active|Out of hours)$/.test(f) ? ' hot' : ''), text: f })); }
+  function pills(flags) { return flags.map(f => el('span', { class: 'pill' + (C.isOverLimit(f) || /mid-shift|away from a yard|after leaving|long after/.test(f) || /^(Stop|Protect|Active|Out of hours)$/.test(f) ? ' hot' : ''), text: f })); }
+
+  /* ---------- ELD shift hours: the timesheet check ---------- */
+  const REVIEW = /Over 16h|over 10h|mid-shift|under 10h|away from a yard|after leaving|long after/i;
+  const q25 = ms => (Math.round(ms / C.H * 4) / 4).toFixed(2), mins = ms => (ms == null ? '' : String(Math.round(ms / C.MIN)));
+  async function loadEld(refresh) {
+    if (st.eldLoading) return; const start = $('start').value, end = $('end').value; if (!start || !end || end < start) return;
+    st.eldLoading = true; st.eldErr = '';
+    try { st.eld = await api('/api/eldshifts?start=' + start + '&end=' + end + (refresh ? '&refresh=1' : '')); } catch (e) { st.eld = null; st.eldErr = e.message; }
+    finally { st.eldLoading = false; if (st.view === 'eld' || st.view === 'eldday') render(); }
+  }
+  function eldRows() {
+    if (!st.eld) return []; const d = $('f-driver').value, t = $('f-truck').value;
+    return st.eld.rows.filter(r => (!d || r.driver === d) && (!t || (r.truck || '').split(' / ').includes(t)) && (!st.reviewOnly || r.flags.some(f => REVIEW.test(f))));
+  }
+  function eldDayRows() {
+    const m = new Map();
+    for (const s of eldRows()) { const k = s.driverId + '|' + s.date, r = m.get(k) || { driver: s.driver, date: s.date, shifts: 0, span: 0, onDuty: 0, drive: 0, flags: new Set() };
+      r.shifts++; r.span += s.span; r.onDuty += s.onDuty; r.drive += s.drive; s.flags.filter(f => REVIEW.test(f)).forEach(f => r.flags.add(f)); m.set(k, r); }
+    return [...m.values()].sort((a, b) => a.driver.localeCompare(b.driver) || (a.date < b.date ? -1 : 1));
+  }
+  function eldView(key) {
+    if (st.eldErr) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.eldErr + ' Open Connection check for details.' })]);
+    if (!st.eld) { loadEld(); return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Loading ELD logs and yard trips from Samsara. A long period can take a minute.' })]); }
+    if (st.eld.example) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Shift hours from the ELD need live Samsara data.' })]);
+    const R = eldRows(), tile = (v, l, alert) => el('div', { class: alert ? 'alert' : '' }, [el('b', { text: String(v) }), el('span', { text: l })]);
+    const rev = R.filter(r => r.flags.some(f => REVIEW.test(f))).length, hrs = R.reduce((a, r) => a + r.span, 0);
+    return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [
+      el('section', { class: 'band', style: 'grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(R.length, 'Finished shifts'), tile(new Set(R.map(r => r.driverId)).size, 'Drivers'), tile(Math.round(hrs / C.H).toLocaleString(), 'Total shift hours'),
+        tile(R.length ? (hrs / R.length / C.H).toFixed(1) : '0', 'Average shift, hours'), tile(rev, 'Shifts to review', rev > 0)]),
+      tableView(key)]);
+  }
 
   /* ---------- 80-hour clock (California intrastate, flammable tank vehicle) ---------- */
   const h1 = ms => (ms / C.H).toFixed(1);
@@ -215,6 +246,24 @@
         ['From', r => r.from], ['To', r => r.to], ['Trips', r => r.n, null, 1], ['Avg drive time', r => r.drive, D, 1, C.fmtDur], ['Fastest', r => r.min, D, 1, C.fmtDur], ['Slowest', r => r.max, D, 1, C.fmtDur],
         ['Avg miles', r => r.m, mi, 1, mi], ['Avg speed (mph)', r => r.mph, sp, 1], ['Avg arrive at From to depart To', r => r.span, D, 1, C.fmtDur], ['Drivers', r => r.drivers, null, 1]]
     },
+    eld: {
+      file: 'shift-hours-eld', rows: eldRows, defaultSort: { i: 3, dir: -1 },
+      extra: () => el('label', { class: 'check' }, [el('input', Object.assign({ type: 'checkbox', onchange: e => { st.reviewOnly = e.target.checked; render(); } }, st.reviewOnly ? { checked: '' } : {})), 'Shifts to review only']),
+      cols: [
+        ['Shift date', r => r.date], ['Driver', r => r.driver], ['Truck', r => r.truck], ['On duty at', r => r.s, C.fmtDT, 1, C.fmtDTcsv], ['Started at', r => (r.startPlace == null ? 'Unknown' : r.startPlace || 'Away from yard')],
+        ['Off duty at', r => r.e, C.fmtDT, 1, C.fmtDTcsv], ['Ended at', r => (r.endPlace == null ? 'Unknown' : r.endPlace || 'Away from yard')],
+        ['Total shift hours', r => r.span, D, 1, C.hrs], ['To nearest quarter hour', r => r.span, q25, 1], ['On-duty time', r => r.onDuty, D, 1, C.hrs], ['Drive time', r => r.drive, D, 1, C.hrs],
+        ['Off-duty breaks', r => r.breakCount, null, 1], ['Break time', r => r.breakTime, D, 1, C.hrs], ['Longest break', r => r.longestBreak, D, 1, C.hrs],
+        ['Left yard', r => r.yardOut, C.fmtDT, 1, C.fmtDTcsv], ['Back at yard', r => r.yardIn, C.fmtDT, 1, C.fmtDTcsv], ['Yard to yard hours', r => r.yardSpan, D, 1, C.hrs],
+        ['Minutes on duty before leaving yard', r => (r.yardOut == null ? null : r.yardOut - r.s), mins, 1], ['Minutes on duty after return', r => (r.yardIn == null ? null : r.e - r.yardIn), mins, 1],
+        ['Rest before', r => r.restBefore, (v, r) => (r.restBeforeOpen ? '' : D(v)), 1, (v, r) => (r.restBeforeOpen ? '' : C.hrs(v))], ['Rest after', r => r.restAfter, (v, r) => (r.restAfterOpen ? 'over ' : '') + D(v), 1, C.hrs],
+        ['Flags', r => r.flags.join('; '), null, 0, null, 'flags']]
+    },
+    eldday: {
+      file: 'hours-by-driver-and-day', rows: eldDayRows, cols: [
+        ['Driver', r => r.driver], ['Shift date', r => r.date], ['Shifts', r => r.shifts, null, 1], ['Total shift hours', r => r.span, C.hrs, 1], ['To nearest quarter hour', r => r.span, q25, 1],
+        ['On-duty hours', r => r.onDuty, C.hrs, 1], ['Drive hours', r => r.drive, C.hrs, 1], ['Flags', r => [...r.flags].join('; '), null, 0, null, 'flags']]
+    },
     hos: {
       file: '80-hour-clock', rows: hosRows, defaultSort: { i: 3, dir: 1 },
       get cols() {
@@ -255,7 +304,7 @@
     return { n: rows.length, text: '﻿' + [cols.map(c => q(c[0])).join(',')].concat(rows.map(r => cols.map(c => q(csvv(c, r))).join(','))).join('\r\n') + '\r\n' };
   }
   function downloadCsv(key, msg) {
-    const out = csvText(key), r = key === 'faults' ? st.faults : key === 'hos' ? { start: st.hos.dayLabels[0], end: st.hos.dayLabels[7] } : st.report;
+    const out = csvText(key), r = key === 'faults' ? st.faults : key === 'hos' ? { start: st.hos.dayLabels[0], end: st.hos.dayLabels[7] } : key === 'eld' || key === 'eldday' ? st.eld : st.report;
     const a = el('a', { href: URL.createObjectURL(new Blob([out.text], { type: 'text/csv;charset=utf-8' })), download: 'pti-' + TABLES[key].file + '_' + r.start + '_to_' + r.end + '.csv' });
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     msg.textContent = 'Downloaded ' + out.n.toLocaleString() + ' rows.';
@@ -383,6 +432,7 @@
       'Trucks with no driver recorded and yard-to-yard moves with no saved stops are left out. Trucks still out on a shift are not counted until they return.',
       'ELD columns come from the driver’s hours-of-service log: on duty from the end of the last rest of 5 hours or more before the shift until the next one after it. Rest before shift is the length of that earlier rest; "over" means it began before the loaded days. Personal conveyance counts as rest.',
       'Point to point: each saved stop to the next saved stop, including the yard. Average speed is total miles divided by total drive time. "Arrive at From to depart To" is time on site at the first place, plus the drive, plus time on site at the second. With "Direct trips only" on, trips that paused at an unsaved place on the way are left out so averages are not stretched.',
+      'Shift hours (ELD): a shift starts when the driver first goes on duty after a rest of 9 hours or more and ends when they go off duty for the next one. Off-duty breaks inside the shift do not end it, and total shift hours is the whole span from first on duty to final off duty. The shift date is the Pacific date the shift started. The yard trip for the same driver is matched as a cross-check. Shifts are flagged for review when there is an off-duty stretch of 4 hours or more inside the shift, the shift starts or ends away from a yard, the driver went on duty after the truck left the yard, or stayed on duty more than an hour after it returned.',
       '80-hour clock: built for California intrastate drivers of flammable-liquid tank vehicles. On-duty time (driving plus on duty, from the ELD log) is added up over the 8 calendar days shown, Pacific time. A rest of 34 hours or more starts a fresh 80, so only time after the latest reset is counted. A work period runs between rests of 10 hours or more; it is counted as over a limit if it has more than 10 hours of driving, or any driving more than 16 hours after it began. Personal conveyance counts as rest. This is a planning aid, not a legal log; the ELD is the record.',
       'Fault history: Samsara records the active fault codes on a truck each time they change. Each row is one stretch where a code stayed active: first seen, last seen, and when it cleared. "Active" means the code was still present in the last reading of the period. Trailers are not included because they do not report engine fault codes.',
       'Flags: over 16 hours yard to yard, over 10 hours of drive time, under 10 hours of rest before the shift, and a 34-hour restart before the shift.'];
@@ -395,7 +445,8 @@
     $('title').textContent = TITLES[st.view]; document.title = TITLES[st.view] + ' | PTI Shift Reports';
     const r = st.report, data = !['check', 'rules'].includes(st.view);
     $('bar').hidden = !data;
-    if (st.view === 'hos') { const h = st.hos; $('period').textContent = h && !h.example ? 'The 8 days ending ' + C.fmtDT(h.asOf) + '. Only the To date is used here; set it to today for the current picture.' : ''; }
+    if (st.view === 'eld' || st.view === 'eldday') { const e = st.eld; $('period').textContent = e && !e.example ? 'Shifts that started ' + e.start + ' through ' + e.end + (e.open ? ', ' + e.open + ' driver' + (e.open > 1 ? 's' : '') + ' still on shift and not counted yet' : '') + ', loaded ' + C.fmtDT(e.loadedAt) : ''; }
+    else if (st.view === 'hos') { const h = st.hos; $('period').textContent = h && !h.example ? 'The 8 days ending ' + C.fmtDT(h.asOf) + '. Only the To date is used here; set it to today for the current picture.' : ''; }
     else if (st.view === 'faults') { const f = st.faults; $('period').textContent = f && !f.example ? 'Fault codes reported ' + f.start + ' through ' + f.end + ', loaded ' + C.fmtDT(f.loadedAt) + '. Driver and yard filters do not apply here.' : ''; }
     else $('period').textContent = !data ? '' : !r ? 'Loading' : (r.example ? 'Example data' : 'Shifts that started ' + r.start + ' through ' + r.end + (r.inProgress ? ', ' + r.inProgress + ' truck' + (r.inProgress > 1 ? 's' : '') + ' still out and not counted yet' : '') + ', loaded ' + C.fmtDT(r.loadedAt));
     const v = $('view'); v.textContent = '';
@@ -403,6 +454,7 @@
     else if (st.view === 'rules') v.appendChild(rulesView());
     else if (st.view === 'faults') v.appendChild(faultsView());
     else if (st.view === 'hos') v.appendChild(hosView());
+    else if (st.view === 'eld' || st.view === 'eldday') v.appendChild(eldView(st.view));
     else if (!r) v.appendChild(el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.loading ? 'Loading trips and hours of service from Samsara. A long period can take a minute.' : 'Choose a period and press Run report.' })]));
     else v.appendChild(st.view === 'overview' ? overview() : st.view === 'compare' ? compareView() : tableView(st.view));
   }

@@ -71,3 +71,24 @@ const mk2 = mk.slice(0, -1).concat([{ s: d0 + 5 * 24 * HR + 18 * HR, e: d0 + 7 *
 const c2 = driverClock(mk2, d0 + 7 * 24 * HR + 12 * HR, ds);
 assert.strictEqual(c2.used, 5 * HR, 'only time after the 36h reset counts'); assert.ok(c2.resetEnd);
 console.log('80-hour clock checks passed.');
+
+// ELD-first shifts, from Raul Aldape's real log blocks, Nov 1-3 2026 (timesheet: 11/1 = 12.00, 11/2 = 17.00)
+const eldLib = require('../lib/eldshifts');
+const Y = { lat: 35.45495, lng: -119.035034 }, L = { lat: 35.294937, lng: -118.92461 }, X = { lat: 33.9, lng: -118.2 };
+const B = (s, e, c, p) => Object.assign({ s, e, c }, p || { lat: 0, lng: 0 });
+const raul = [
+  B(1793516400000, 1793545331000, 'duty', X), B(1793545331000, 1793581424000, 'rest', Y),
+  B(1793581424000, 1793581435119, 'duty'), B(1793581435119, 1793596939000, 'duty', Y), B(1793596939000, 1793599105000, 'rest', X), B(1793599105000, 1793607000000, 'drive', X),
+  B(1793607000000, 1793608800000, 'rest', X), B(1793608800000, 1793623618000, 'drive', X), B(1793623618000, 1793624485000, 'duty', Y),
+  B(1793624485000, 1793690879168, 'rest', Y), B(1793690879168, 1793692279000, 'rest', Y),
+  B(1793692279000, 1793709168000, 'duty', Y), B(1793709168000, 1793711770000, 'rest', X), B(1793711770000, 1793717100000, 'duty', X), B(1793717100000, 1793718900000, 'rest', X),
+  B(1793718900000, 1793736398000, 'drive', X), B(1793736398000, 1793738466000, 'rest', X), B(1793738466000, 1793749462000, 'duty', L), B(1793749462000, 1793800000000, 'rest', L)];
+const rs = eldLib.buildDriverShifts(raul, eldLib.FALLBACK_YARDS, 1793800000000).shifts;
+assert.strictEqual(rs.length, 3);
+assert.strictEqual(rs[1].date, '2026-11-01'); assert.strictEqual((rs[1].span / 3600000).toFixed(2), '11.96'); assert.strictEqual(rs[1].startPlace, 'Petrol Transport (Bakersfield)'); assert.strictEqual(rs[1].endPlace, 'Petrol Transport (Bakersfield)');
+assert.strictEqual(rs[2].date, '2026-11-02', 'a shift that starts 11:51 PM on 11/2 belongs to 11/2'); assert.strictEqual((rs[2].span / 3600000).toFixed(2), '15.88'); assert.strictEqual(rs[2].endPlace, '');
+assert.ok(eldLib.flag(Object.assign({ yardOut: null, yardIn: null }, rs[2])).flags.includes('Ended away from a yard'));
+// a 6 hour off-duty stretch does not end the shift and is flagged
+const odd = eldLib.buildDriverShifts([B(0, 36e6, 'rest', Y), B(36e6, 54e6, 'duty', Y), B(54e6, 54e6 + 6 * 36e5, 'rest', Y), B(54e6 + 6 * 36e5, 100e6, 'duty', Y), B(100e6, 140e6, 'rest', Y)], eldLib.FALLBACK_YARDS, 140e6).shifts;
+assert.strictEqual(odd.length, 1); assert.ok(eldLib.flag(Object.assign({ yardOut: null, yardIn: null }, odd[0])).flags.some(f => /mid-shift/.test(f)));
+console.log('ELD shift checks passed.');
