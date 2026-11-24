@@ -16,6 +16,86 @@
     return e;
   }
 
+  /* ---------- icons, stat cards, charts ---------- */
+  const ICONS = {
+    home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', chart: 'M4 20V10M10 20V4M16 20v-8M22 20H2', truck: 'M2 7h11v9H2zM13 10h4l4 3v3h-8zM6 19a2 2 0 100-4 2 2 0 000 4zM17 19a2 2 0 100-4 2 2 0 000 4z',
+    pin: 'M12 21s7-6.2 7-11.5A7 7 0 005 9.5C5 14.8 12 21 12 21zM12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z', cal: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4', person: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6',
+    clock: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2', target: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 16a4 4 0 100-8 4 4 0 000 8z', swap: 'M4 8h14l-3-3M20 16H6l3 3', road: 'M8 3L4 21M16 3l4 18M12 5v3M12 11v3M12 17v3',
+    shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z', wrench: 'M14 6a4 4 0 005 5l-9 9a2 2 0 01-3-3l9-9a4 4 0 00-2-2z', alert: 'M12 4l9 16H3zM12 10v4M12 17v.5', check: 'M12 21a9 9 0 100-18 9 9 0 000 18zM8 12l3 3 5-6',
+    sheet: 'M6 3h9l4 4v14H6zM9 12h7M9 16h7M9 8h3', list: 'M5 6h14M5 12h14M5 18h14'
+  };
+  const NS = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs, kids) { const e = document.createElementNS(NS, tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); for (const c of [].concat(kids || [])) if (c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); return e; }
+  function icon(name) { return svg('svg', { class: 'ic', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, [svg('path', { d: ICONS[name] || ICONS.list })]); }
+  const NAV_ICONS = { overview: 'home', eld: 'clock', eldday: 'cal', tscheck: 'sheet', shifts: 'truck', stops: 'pin', daily: 'cal', totals: 'person', sites: 'clock', lanes: 'target', compare: 'swap', hos: 'shield', faults: 'alert', check: 'check', rules: 'list' };
+  function tileIcon(label) {
+    const l = label.toLowerCase();
+    return /limit|review|over|fault|lamp|missing|higher/.test(l) ? 'alert' : /driver/.test(l) ? 'person' : /truck/.test(l) ? 'truck' : /mile/.test(l) ? 'road' : /stop|site/.test(l) && !/time/.test(l) ? 'pin' : /hour|time|average|reset|clock/.test(l) ? 'clock' : /match/.test(l) ? 'check' : /shift|day|episode/.test(l) ? 'cal' : 'chart';
+  }
+  function tile(v, label, alert) { return el('div', { class: alert ? 'alert' : '' }, [el('span', { class: 'kic' }, [icon(tileIcon(label))]), el('span', { class: 'kt' }, [el('b', { text: String(v) }), el('span', { text: label })])]); }
+  function chartPanel(title, ic, body, hint) { return el('section', { class: 'panel' }, [el('header', {}, [el('h2', {}, [icon(ic), title]), hint ? el('span', { class: 'hint', text: hint }) : null]), el('div', { class: 'body' }, [body])]); }
+  function hbars(items, blue) {
+    const max = Math.max(1, ...items.map(i => i.value)), box = el('div', { class: 'rank' + (blue ? ' blue' : '') });
+    if (!items.length) return el('div', { class: 'hint', text: 'Nothing to chart for this period.' });
+    items.forEach(i => { box.appendChild(el('span', { class: 'name', text: i.label, title: i.label })); box.appendChild(el('span', { class: 'track' }, [el('i', { style: 'width:' + (i.value / max * 100) + '%' })])); box.appendChild(el('span', { class: 'num', text: i.text })); });
+    return box;
+  }
+  function donut(parts, centre) {
+    const total = parts.reduce((a, p) => a + p.value, 0) || 1, R = 54, CIRC = 2 * Math.PI * R; let off = 0;
+    const g = svg('svg', { viewBox: '0 0 150 150', role: 'img', 'aria-label': parts.map(p => p.label + ' ' + Math.round(p.value / total * 100) + ' percent').join(', ') }, [svg('circle', { cx: 75, cy: 75, r: R, fill: 'none', stroke: '#1a2f57', 'stroke-width': 20 })]);
+    parts.forEach(p => { const len = p.value / total * CIRC; g.appendChild(svg('circle', { cx: 75, cy: 75, r: R, fill: 'none', stroke: p.color, 'stroke-width': 20, 'stroke-dasharray': len + ' ' + (CIRC - len), 'stroke-dashoffset': -off, transform: 'rotate(-90 75 75)' })); off += len; });
+    g.appendChild(svg('text', { x: 75, y: 70, 'text-anchor': 'middle', class: 'c1' }, ['Total'])); g.appendChild(svg('text', { x: 75, y: 90, 'text-anchor': 'middle', class: 'c2' }, [centre]));
+    return el('div', { class: 'donut' }, [g, el('ul', {}, parts.map(p => el('li', {}, [el('i', { style: 'background:' + p.color }), el('span', { text: p.label }), el('small', { text: p.text + ' (' + Math.round(p.value / total * 100) + '%)' })])))]);
+  }
+  function lineChart(points, unit) {
+    if (points.length < 2) return el('div', { class: 'hint', text: 'Pick a period of two or more days to see a trend.' });
+    const W = 520, Hh = 170, L = 34, B = 22, T = 10, max = Math.max(1, ...points.map(p => p.y)), top = Math.ceil(max / 4) * 4 || 4;
+    const x = i => L + i * (W - L - 8) / (points.length - 1), y = v => T + (1 - v / top) * (Hh - T - B);
+    const g = svg('svg', { viewBox: '0 0 ' + W + ' ' + Hh, preserveAspectRatio: 'none', role: 'img', 'aria-label': 'Trend by day, highest ' + max.toFixed(0) + ' ' + unit });
+    for (let i = 0; i <= 4; i++) { const v = top * i / 4; g.appendChild(svg('line', { x1: L, x2: W - 8, y1: y(v), y2: y(v), stroke: '#1d3a6b', 'stroke-width': 1 })); g.appendChild(svg('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end' }, [String(Math.round(v))])); }
+    const d = points.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.y).toFixed(1)).join(' ');
+    g.appendChild(svg('path', { d: d + ' L' + x(points.length - 1) + ' ' + y(0) + ' L' + x(0) + ' ' + y(0) + ' Z', fill: 'rgba(224,35,46,.22)' })); g.appendChild(svg('path', { d, fill: 'none', stroke: '#ff5a5f', 'stroke-width': 2.2 }));
+    const every = Math.ceil(points.length / 9);
+    points.forEach((p, i) => { const c = svg('circle', { cx: x(i), cy: y(p.y), r: 3.2, fill: '#ff5a5f' }, [svg('title', {}, [p.label + ': ' + p.y.toFixed(1) + ' ' + unit])]); g.appendChild(c); if (i % every === 0) g.appendChild(svg('text', { x: x(i), y: Hh - 6, 'text-anchor': 'middle' }, [p.label])); });
+    return el('div', { class: 'line' }, [g]);
+  }
+  const md = d => Number(d.slice(5, 7)) + '/' + Number(d.slice(8));
+  function byDay(list, dateOf, valOf, start, end) { const m = {}; for (const r of list) m[dateOf(r)] = (m[dateOf(r)] || 0) + valOf(r); const out = []; for (let d = start; d <= end; d = C.addDays(d, 1)) out.push({ label: md(d), y: m[d] || 0 }); return out; }
+  function top5(list, keyOf, valOf, fmt) { const m = new Map(); for (const r of list) m.set(keyOf(r), (m.get(keyOf(r)) || 0) + valOf(r)); return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label, value, text: fmt(value) })); }
+  const hh = ms => (ms / C.H).toFixed(1) + ' h';
+
+  /* charts shown under each report */
+  function chartsFor(view) {
+    const r = st.report, grid = kids => el('div', { class: 'grid3' }, kids);
+    if (['shifts', 'stops', 'daily', 'totals', 'sites', 'lanes'].includes(view)) {
+      if (!r) return null; const S = shifts(); if (!S.length) return null;
+      const legs = [].concat(...S.map(s => s.legs.filter(l => !l.isReturn && !l.yardVisit).map(l => ({ s, l }))));
+      const drive = S.reduce((a, s) => a + s.drive, 0), site = S.reduce((a, s) => a + s.onSite, 0), dur = S.reduce((a, s) => a + s.dur, 0), other = Math.max(0, dur - drive - site);
+      const time = chartPanel('Time breakdown', 'clock', donut([{ label: 'Drive time', value: drive, color: '#2f8bff', text: D(drive) }, { label: 'On site', value: site, color: '#e0232e', text: D(site) }, { label: 'Unsaved stops and yard', value: other, color: '#7f93b3', text: D(other) }], Math.round(dur / C.H) + ' h'));
+      if (view === 'stops' || view === 'sites') return grid([chartPanel('Stops by location', 'chart', hbars(top5(legs, x => C.label(x.l.place), () => 1, v => String(v))), 'Top 5'), time,
+        chartPanel('Stops per day', 'cal', lineChart(byDay(legs, x => x.s.date, () => 1, r.start, r.end), 'stops'))]);
+      if (view === 'lanes') return grid([chartPanel('Busiest lanes', 'target', hbars(laneRows().slice(0, 5).map(l => ({ label: l.from + ' to ' + l.to, value: l.n, text: String(l.n) }))), 'Top 5 by trips'), time,
+        chartPanel('Miles per day', 'road', lineChart(byDay(S, s => s.date, s => C.miles(s.meters), r.start, r.end), 'miles'))]);
+      if (view === 'totals') return grid([chartPanel('Hours by driver', 'person', hbars(top5(S, s => s.driver, s => s.dur, hh)), 'Top 5'), time, chartPanel('Miles by driver', 'road', hbars(top5(S, s => s.driver, s => C.miles(s.meters), v => Math.round(v).toLocaleString()), true), 'Top 5')]);
+      return grid([chartPanel(view === 'daily' ? 'Hours by driver' : 'Shifts by start yard', 'chart', hbars(view === 'daily' ? top5(S, s => s.driver, s => s.dur, hh) : top5(S, s => s.startYard, () => 1, v => String(v))), 'Top 5'), time,
+        chartPanel('Hours worked per day', 'cal', lineChart(byDay(S, s => s.date, s => s.dur / C.H, r.start, r.end), 'hours'))]);
+    }
+    if (view === 'eld' || view === 'eldday') {
+      if (!st.eld || st.eld.example) return null; const R = eldRows(); if (!R.length) return null;
+      const drive = R.reduce((a, x) => a + x.drive, 0), duty = R.reduce((a, x) => a + x.onDuty - x.drive, 0), brk = R.reduce((a, x) => a + x.breakTime, 0), span = R.reduce((a, x) => a + x.span, 0);
+      const flags = new Map(); for (const x of R) for (const f of x.flags.filter(f => REVIEW.test(f))) { const k = f.replace(/^Off [\d.]+h/, 'Off 4h or more'); flags.set(k, (flags.get(k) || 0) + 1); }
+      return grid([chartPanel(view === 'eld' ? 'Shifts to review, by reason' : 'Shift hours by driver', view === 'eld' ? 'alert' : 'person', hbars(view === 'eld' ? [...flags.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label, value, text: String(value) })) : top5(R, x => x.driver, x => x.span, hh)), 'Top 5'),
+        chartPanel('Time breakdown', 'clock', donut([{ label: 'Driving', value: drive, color: '#2f8bff', text: D(drive) }, { label: 'On duty, not driving', value: duty, color: '#e0232e', text: D(duty) }, { label: 'Off-duty breaks', value: brk, color: '#7f93b3', text: D(brk) }], Math.round(span / C.H) + ' h')),
+        chartPanel('Shift hours per day', 'cal', lineChart(byDay(R, x => x.date, x => x.span / C.H, st.eld.start, st.eld.end), 'hours'))]);
+    }
+    return null;
+  }
+  function reportBand() {
+    const S = shifts(), legs = [].concat(...S.map(s => s.legs.filter(l => !l.isReturn && !l.yardVisit))), sum = f => S.reduce((a, s) => a + f(s), 0), site = legs.reduce((a, l) => a + l.onSite, 0);
+    return el('section', { class: 'band', 'aria-label': 'Totals for the period' }, [tile(legs.length.toLocaleString(), 'Total stops'), tile(new Set([].concat(...S.map(s => s.vehicle.split(' / ')))).size, 'Unique trucks'), tile(new Set(S.map(s => s.driverId)).size, 'Unique drivers'),
+      tile(legs.length ? D(site / legs.length) : '0m', 'Avg. time on site'), tile(D(sum(s => s.drive)), 'Total drive time'), tile(Math.round(C.miles(sum(s => s.meters))).toLocaleString(), 'Total miles')]);
+  }
+
   /* ---------- period ---------- */
   const today = () => (st.status && st.status.today) || C.laDate(Date.now());
   function presetRange(p) {
@@ -110,7 +190,7 @@
     if (st.eldErr) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.eldErr + ' Open Connection check for details.' })]);
     if (!st.eld) { loadEld(); return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Loading ELD logs and yard trips from Samsara. A long period can take a minute.' })]); }
     if (st.eld.example) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Shift hours from the ELD need live Samsara data.' })]);
-    const R = eldRows(), tile = (v, l, alert) => el('div', { class: alert ? 'alert' : '' }, [el('b', { text: String(v) }), el('span', { text: l })]);
+    const R = eldRows();
     const rev = R.filter(r => r.flags.some(f => REVIEW.test(f))).length, hrs = R.reduce((a, r) => a + r.span, 0);
     return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [
       el('section', { class: 'band', style: 'grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(R.length, 'Finished shifts'), tile(new Set(R.map(r => r.driverId)).size, 'Drivers'), tile(Math.round(hrs / C.H).toLocaleString(), 'Total shift hours'),
@@ -163,7 +243,7 @@
     if (!st.eld) { loadEld(); return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [importer, el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Loading ELD shifts from Samsara.' })])]); }
     if (st.eld.example) return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [importer, el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Comparing needs live Samsara data.' })])]);
     const keep = st.diffOnly; st.diffOnly = false; const all = tsRows(); st.diffOnly = keep;
-    const n = s => all.filter(r => r.status === s), hi = n('Timesheet higher'), lo = n('Timesheet lower'), tile = (v, l, alert) => el('div', { class: alert ? 'alert' : '' }, [el('b', { text: String(v) }), el('span', { text: l })]);
+    const n = s => all.filter(r => r.status === s), hi = n('Timesheet higher'), lo = n('Timesheet lower');
     const band = el('section', { class: 'band', style: 'grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(all.length, 'Driver days compared'), tile(n('Match').length, 'Match within ' + st.tol + ' minutes'),
       tile(hi.length, 'Timesheet higher, ' + hi.reduce((a, r) => a + r.diff, 0).toFixed(1) + ' hours over', hi.length > 0), tile(lo.length, 'Timesheet lower, ' + Math.abs(lo.reduce((a, r) => a + r.diff, 0)).toFixed(1) + ' hours under'),
       tile(n('Hours claimed, no ELD shift').length + n('ELD shift, no hours claimed').length, 'One side missing')]);
@@ -187,7 +267,7 @@
     if (st.hosErr) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.hosErr + ' Open Connection check for details.' })]);
     if (!st.hos) { loadHos(); return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Loading hours-of-service logs from Samsara.' })]); }
     if (st.hos.example) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'The 80-hour clock needs live Samsara data.' })]);
-    const R = hosRows(), tile = (v, l, alert) => el('div', { class: alert ? 'alert' : '' }, [el('b', { text: String(v) }), el('span', { text: l })]);
+    const R = hosRows();
     const out = R.filter(r => !r.inReset && r.left <= 0).length, low = R.filter(r => !r.inReset && r.left > 0 && r.left < 16 * C.H).length, viol = R.reduce((a, r) => a + r.overDrive + r.pastWindow, 0);
     return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [
       el('section', { class: 'band', style: 'grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(R.length, 'Drivers on duty in these 8 days'), tile(out, 'At or over 80 hours', out > 0), tile(low, 'Under 16 hours left'),
@@ -214,7 +294,7 @@
     if (st.faultsErr) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.faultsErr + ' Open Connection check for details.' })]);
     if (!st.faults) { loadFaults(); return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Loading fault codes from Samsara. A long period can take a minute.' })]); }
     if (st.faults.example) return el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Fault history needs live Samsara data. There are no example faults.' })]);
-    const R = faultRows(), tile = (v, l, alert) => el('div', { class: alert ? 'alert' : '' }, [el('b', { text: String(v) }), el('span', { text: l })]);
+    const R = faultRows();
     const act = R.filter(r => r.active), red = act.filter(r => r.lamps.some(x => RED.test(x)));
     const band = el('section', { class: 'band', style: 'grid-template-columns:repeat(5,minmax(0,1fr))' }, [
       tile(new Set(R.map(r => r.truck)).size, 'Trucks that reported a fault'), tile(R.length, 'Fault episodes'), tile(act.length, 'Still active at end of period'),
@@ -397,7 +477,6 @@
   function overview() {
     const S = shifts(), sum = f => S.reduce((a, s) => a + f(s), 0);
     const over = S.filter(s => s.flags.some(C.isOverLimit));
-    const tile = (v, label, alert) => el('div', { class: alert ? 'alert' : '' }, [el('b', { text: v }), el('span', { text: label })]);
     const band = el('section', { class: 'band', 'aria-label': 'Totals for the period' }, [
       tile(S.length.toLocaleString(), 'Shifts'), tile(String(new Set(S.map(s => s.driverId)).size), 'Drivers'),
       tile(Math.round(sum(s => s.dur) / C.H).toLocaleString(), 'Hours worked, yard to yard'), tile(S.length ? D(sum(s => s.dur) / S.length) : '0m', 'Average shift'),
@@ -467,9 +546,9 @@
       el('button', { type: 'button', class: 'btn', text: 'Swap A and B', onclick: () => { const t = st.a; st.a = st.b; st.b = t; render(); } }), directToggle()])]);
     if (!st.a || !st.b || st.a === st.b) return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [controls, el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Choose two different locations to see average miles, drive time and speed between them. You can also click any row on the Point to point page.' })])]);
     const all = hops(), dir = (f, t) => {
-      const g = agg(all.filter(h => h.from === f && h.to === t)), tile = (v, l) => el('div', {}, [el('b', { text: v || 'n/a' }), el('span', { text: l })]);
+      const g = agg(all.filter(h => h.from === f && h.to === t));
       return el('section', { class: 'panel' }, [el('header', {}, [el('h2', { text: f + ' to ' + t }), el('span', { class: 'hint', text: g.n + (g.n === 1 ? ' trip' : ' trips') + ' by ' + g.drivers + (g.drivers === 1 ? ' driver' : ' drivers') })]),
-        g.n ? el('div', { class: 'band', style: 'border:0;grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(mi(g.m), 'Avg miles'), tile(D(g.drive), 'Avg drive time'), tile(sp(g.mph), 'Avg speed, mph'), tile(D(g.min) + ' to ' + D(g.max), 'Fastest to slowest'), tile(g.span == null ? '' : D(g.span), 'Avg arrive at ' + f + ' to depart ' + t)])
+        g.n ? el('div', { class: 'band', style: 'padding:14px 16px;grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(mi(g.m), 'Avg miles'), tile(D(g.drive), 'Avg drive time'), tile(sp(g.mph), 'Avg speed, mph'), tile(D(g.min) + ' to ' + D(g.max), 'Fastest to slowest'), tile(g.span == null ? 'n/a' : D(g.span), 'Avg arrive at ' + f + ' to depart ' + t)])
           : el('div', { class: 'empty', text: 'No trips in this direction for this period and these filters.' })]);
     };
     return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [controls, dir(st.a, st.b), dir(st.b, st.a), tableView('pair')]);
@@ -510,7 +589,7 @@
     else if (st.view === 'hos') { const h = st.hos; $('period').textContent = h && !h.example ? 'The 8 days ending ' + C.fmtDT(h.asOf) + '. Only the To date is used here; set it to today for the current picture.' : ''; }
     else if (st.view === 'faults') { const f = st.faults; $('period').textContent = f && !f.example ? 'Fault codes reported ' + f.start + ' through ' + f.end + ', loaded ' + C.fmtDT(f.loadedAt) + '. Driver and yard filters do not apply here.' : ''; }
     else $('period').textContent = !data ? '' : !r ? 'Loading' : (r.example ? 'Example data' : 'Shifts that started ' + r.start + ' through ' + r.end + (r.inProgress ? ', ' + r.inProgress + ' truck' + (r.inProgress > 1 ? 's' : '') + ' still out and not counted yet' : '') + ', loaded ' + C.fmtDT(r.loadedAt));
-    const v = $('view'); v.textContent = '';
+    const v = $('view'); v.textContent = ''; v.style.cssText = 'display:flex;flex-direction:column;gap:14px';
     if (st.view === 'check') v.appendChild(checkView());
     else if (st.view === 'rules') v.appendChild(rulesView());
     else if (st.view === 'faults') v.appendChild(faultsView());
@@ -518,12 +597,13 @@
     else if (st.view === 'eld' || st.view === 'eldday') v.appendChild(eldView(st.view));
     else if (st.view === 'tscheck') v.appendChild(tsView());
     else if (!r) v.appendChild(el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.loading ? 'Loading trips and hours of service from Samsara. A long period can take a minute.' : 'Choose a period and press Run report.' })]));
-    else v.appendChild(st.view === 'overview' ? overview() : st.view === 'compare' ? compareView() : tableView(st.view));
+    else { if (['shifts', 'stops', 'daily', 'totals'].includes(st.view)) v.appendChild(reportBand()); v.appendChild(st.view === 'overview' ? overview() : st.view === 'compare' ? compareView() : tableView(st.view)); }
+    const ch = chartsFor(st.view); if (ch) v.appendChild(ch);
   }
   function go(view) { st.view = TITLES[view] ? view : 'overview'; st.q = ''; window.scrollTo(0, 0); if (location.hash.slice(1) !== st.view) history.replaceState(null, '', '#' + st.view); render(); }
 
   /* ---------- start ---------- */
-  document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => go(b.dataset.view)));
+  document.querySelectorAll('[data-view]').forEach(b => { b.prepend(icon(NAV_ICONS[b.dataset.view])); b.addEventListener('click', () => go(b.dataset.view)); });
   window.addEventListener('hashchange', () => go(location.hash.slice(1)));
   $('preset').addEventListener('change', () => { applyPreset(); if ($('preset').value !== 'custom') load(); });
   ['start', 'end'].forEach(id => $(id).addEventListener('change', () => { $('preset').value = 'custom'; }));

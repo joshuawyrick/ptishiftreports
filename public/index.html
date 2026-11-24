@@ -6,13 +6,13 @@
 <title>PTI Shift Reports</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,700;1,500;1,700;1,800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand"><b>PTI Shift Reports</b><span>Petrol Transport Inc.</span></div>
+    <div class="brand"><b>Petrol <i>Transport</i>, Inc.</b><span>Bakersfield, California</span></div>
     <nav class="nav" aria-label="Reports">
       <button type="button" data-view="overview">Overview</button>
       <h2>Timesheet check</h2>
@@ -43,6 +43,19 @@
   </aside>
 
   <div class="main">
+    <div class="banner">
+      <svg class="art" viewBox="0 0 1200 96" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        <polygon points="40,0 110,0 20,96 -50,96" fill="#e0232e" opacity=".85"/><polygon points="120,0 138,0 48,96 30,96" fill="#1f7bff" opacity=".8"/>
+        <polygon points="1010,96 1080,0 1100,0 1030,96" fill="#1f7bff" opacity=".35"/><polygon points="1045,96 1115,0 1125,0 1055,96" fill="#e0232e" opacity=".5"/>
+        <g fill="#03102a" opacity=".85">
+          <rect x="250" y="62" width="34" height="34"/><rect x="290" y="54" width="40" height="42"/><rect x="336" y="66" width="30" height="30"/>
+          <path d="M395 96 L410 44 L418 44 L433 96 Z"/><rect x="372" y="36" width="92" height="7" transform="rotate(-9 418 40)"/><path d="M452 22 q16 8 10 30 l-10 -2 z"/><rect x="368" y="46" width="6" height="50"/><rect x="386" y="84" width="60" height="12"/>
+          <rect x="520" y="40" width="70" height="56" rx="3"/><rect x="514" y="36" width="82" height="6"/><rect x="600" y="52" width="54" height="44" rx="3"/><rect x="660" y="60" width="40" height="36" rx="3"/>
+          <rect x="708" y="30" width="5" height="66"/><rect x="722" y="46" width="5" height="50"/><rect x="740" y="68" width="60" height="28"/><rect x="0" y="92" width="1200" height="4"/>
+        </g>
+      </svg>
+      <div class="t"><b>Shift Reports</b><span>Fleet Operations &amp; Field Activity</span></div>
+    </div>
     <div class="bar" id="bar">
       <label class="field">Period
         <select id="preset">
