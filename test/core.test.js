@@ -44,3 +44,17 @@ assert.strictEqual(juan.legs.find(l => l.place === 'Robinson B Dehy Lease').via,
 assert.strictEqual(dan.legs.find(l => l.place === 'WF36').via, 0);
 assert.strictEqual(Core.mph(1609.344 * 60, Core.H).toFixed(0), '60');
 console.log('Point-to-point checks passed.');
+
+// fault history: readings -> episodes
+const { buildEpisodes } = require('../lib/faults');
+const dtc = (spn, fmi, n) => ({ spnId: spn, fmiId: fmi, occurrenceCount: n, spnDescription: 'Thing', fmiDescription: 'Low', txId: 0 });
+const rd = (time, codes, stop) => ({ time, value: { j1939: { checkEngineLights: { stopIsOn: !!stop }, diagnosticTroubleCodes: codes } } });
+const ep = buildEpisodes([{ id: '1', name: 'A287', faultCodes: [
+  rd('2026-11-20T10:00:00Z', [dtc(100, 1, 1)]), rd('2026-11-20T12:00:00Z', [dtc(100, 1, 3), dtc(200, 4, 1)], true),
+  rd('2026-11-21T09:00:00Z', [dtc(200, 4, 2)]), rd('2026-11-22T09:00:00Z', [dtc(100, 1, 4), dtc(200, 4, 2)])] }]);
+assert.strictEqual(ep.length, 3, 'code 100 cleared then came back = two episodes, code 200 = one');
+const e200 = ep.find(e => e.code === 'SPN 200 / FMI 4');
+assert.ok(e200.active && e200.count === 2 && e200.lamps.includes('Stop'));
+const first100 = ep.filter(e => e.code === 'SPN 100 / FMI 1').sort((a, b) => a.first - b.first)[0];
+assert.ok(!first100.active && first100.cleared === Date.parse('2026-11-21T09:00:00Z') && first100.count === 3);
+console.log('Fault history checks passed.');

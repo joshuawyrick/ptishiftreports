@@ -14,7 +14,7 @@ Fleet and driver analytics for Petrol Transport Inc., built on the Samsara API.
 
 | Name | What it is |
 | --- | --- |
-| `SAMSARA_API_TOKEN` | Read-only Samsara API key. Needs read access to Vehicles, Drivers, Vehicle Trips, Addresses and ELD Hours of Service. |
+| `SAMSARA_API_TOKEN` | Read-only Samsara API key. Needs read access to Vehicles, Vehicle Statistics, Drivers, Vehicle Trips, Addresses and ELD Hours of Service. |
 | `APP_PASSWORD` | The shared office password. Live data stays locked until this is set. |
 | `SESSION_SECRET` | Optional. Any long random text. |
 | `YARD_NAMES` | Optional. Only if yard names in Samsara change. Format: `Samsara name=Shown name; ...` |

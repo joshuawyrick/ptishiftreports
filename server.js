@@ -9,6 +9,7 @@ const path = require('path');
 const Core = require('./public/core.js');
 const samsara = require('./lib/samsara');
 const reports = require('./lib/reports');
+const faults = require('./lib/faults');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -94,6 +95,13 @@ app.get('/api/report', async (req, res) => {
     console.error('report failed:', e.message);
     res.status(502).json({ error: e.message || 'The report could not be loaded.' });
   }
+});
+app.get('/api/faults', async (req, res) => {
+  const { start, end } = req.query;
+  if (!isDate(start) || !isDate(end) || end < start) return res.status(400).json({ error: 'Choose a start date and an end date on or after it.' });
+  if (Math.round((Core.laMidnight(end) - Core.laMidnight(start)) / Core.DAY) + 1 > 92) return res.status(400).json({ error: 'Choose a period of 92 days or less.' });
+  try { res.json(await faults.getFaults(start, end, req.query.refresh === '1')); }
+  catch (e) { console.error('faults failed:', e.message); res.status(502).json({ error: e.message || 'Fault history could not be loaded.' }); }
 });
 app.get('/api/check', async (req, res) => {
   if (!LIVE) return res.json({ live: false, checks: [] });
