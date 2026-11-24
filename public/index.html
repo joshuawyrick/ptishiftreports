@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PTI Shift Reports</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><b>PTI Shift Reports</b><span>Petrol Transport Inc.</span></div>
+    <nav class="nav" aria-label="Reports">
+      <button type="button" data-view="overview">Overview</button>
+      <h2>Reports</h2>
+      <button type="button" data-view="shifts">Shifts</button>
+      <button type="button" data-view="stops">Stops</button>
+      <button type="button" data-view="daily">Hours by day</button>
+      <button type="button" data-view="totals">Driver totals</button>
+      <h2>Setup</h2>
+      <button type="button" data-view="check">Connection check</button>
+      <button type="button" data-view="rules">How numbers are worked out</button>
+    </nav>
+    <div class="side-foot">
+      <div><span class="dot" id="dot"></span><span id="mode">Connecting</span></div>
+      <form method="post" action="/logout" id="logout" hidden><button type="submit">Sign out</button></form>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="bar" id="bar">
+      <label class="field">Period
+        <select id="preset">
+          <option value="7">Last 7 days</option><option value="14" selected>Last 14 days</option><option value="28">Last 28 days</option>
+          <option value="month">This month</option><option value="lastmonth">Last month</option><option value="custom">Custom dates</option>
+        </select>
+      </label>
+      <label class="field">From<input type="date" id="start"></label>
+      <label class="field">To<input type="date" id="end"></label>
+      <button type="button" class="btn primary" id="run">Run report</button>
+      <span class="grow"></span>
+      <label class="field">Driver<select id="f-driver"><option value="">All drivers</option></select></label>
+      <label class="field">Truck<select id="f-truck"><option value="">All trucks</option></select></label>
+      <label class="field">Start yard<select id="f-yard"><option value="">All yards</option></select></label>
+      <label class="check"><input type="checkbox" id="f-flag"> Over a limit only</label>
+    </div>
+
+    <main class="content">
+      <div class="pagehead"><h1 id="title">Overview</h1><p id="period"></p></div>
+      <div class="notice" id="notice" hidden></div>
+      <div id="view"></div>
+    </main>
+  </div>
+</div>
+<div id="drawer-root"></div>
+<script src="/core.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
