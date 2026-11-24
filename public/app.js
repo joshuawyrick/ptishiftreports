@@ -3,8 +3,8 @@
 (function () {
   const C = Core, $ = id => document.getElementById(id);
   const D = C.fmtDurWords, mi = m => C.miles(m).toFixed(1);
-  const st = { report: null, view: 'overview', sort: {}, q: '', loading: false, status: null };
-  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', check: 'Connection check', rules: 'How numbers are worked out' };
+  const st = { report: null, view: 'overview', sort: {}, q: '', loading: false, status: null, direct: true, a: '', b: '' };
+  const TITLES = { overview: 'Overview', shifts: 'Shifts', stops: 'Stops', daily: 'Hours by day', totals: 'Driver totals', sites: 'Time on site', lanes: 'Point to point', compare: 'Compare two locations', check: 'Connection check', rules: 'How numbers are worked out' };
 
   function el(tag, attrs, kids) {
     const e = document.createElement(tag);
@@ -86,6 +86,42 @@
   }
   function pills(flags) { return flags.map(f => el('span', { class: 'pill' + (C.isOverLimit(f) ? ' hot' : ''), text: f })); }
 
+  /* ---------- analysis: every saved stop to the next saved stop ---------- */
+  const sp = v => (v == null ? '' : v.toFixed(1));
+  function hops() {
+    const out = [];
+    for (const s of shifts()) s.legs.forEach((l, i) => {
+      const prev = i ? s.legs[i - 1] : null, from = prev ? C.label(prev.place) : s.startYard, to = C.label(l.place);
+      if (from === to) return;
+      out.push({ s, from, to, drive: l.drive, m: l.m, via: l.via || 0, viaTime: l.viaTime || 0, dep: prev ? prev.dep : s.s, arr: l.arr,
+        span: prev && l.dep != null ? l.dep - prev.arr : null });
+    });
+    return st.direct ? out.filter(h => !h.via) : out;
+  }
+  function agg(list) {
+    const n = list.length, sum = f => list.reduce((a, x) => a + f(x), 0), drive = sum(h => h.drive), m = sum(h => h.m);
+    const spans = list.filter(h => h.span != null);
+    return { n, drive: n ? drive / n : null, min: n ? Math.min(...list.map(h => h.drive)) : null, max: n ? Math.max(...list.map(h => h.drive)) : null,
+      m: n ? m / n : null, mph: C.mph(m, drive), span: spans.length ? spans.reduce((a, h) => a + h.span, 0) / spans.length : null, spanN: spans.length,
+      drivers: new Set(list.map(h => h.s.driverId)).size };
+  }
+  function laneRows() {
+    const m = new Map();
+    for (const h of hops()) { const k = h.from + '→' + h.to; (m.get(k) || m.set(k, []).get(k)).push(h); }
+    return [...m.values()].map(list => Object.assign({ from: list[0].from, to: list[0].to }, agg(list))).sort((a, b) => b.n - a.n);
+  }
+  function siteRows() {
+    const m = new Map();
+    for (const s of shifts()) for (const l of s.legs) { if (l.isReturn) continue; const k = C.label(l.place) + (l.yardVisit ? ' (mid-shift return)' : ''); (m.get(k) || m.set(k, []).get(k)).push({ t: l.onSite, d: s.driverId }); }
+    return [...m.entries()].map(([site, v]) => {
+      const t = v.map(x => x.t).sort((a, b) => a - b), n = t.length;
+      return { site, n, avg: t.reduce((a, x) => a + x, 0) / n, med: n % 2 ? t[(n - 1) / 2] : (t[n / 2 - 1] + t[n / 2]) / 2, min: t[0], max: t[n - 1], total: t.reduce((a, x) => a + x, 0), over1: t.filter(x => x > C.H).length, drivers: new Set(v.map(x => x.d)).size };
+    }).sort((a, b) => b.total - a.total);
+  }
+  function directToggle() {
+    return el('label', { class: 'check' }, [el('input', Object.assign({ type: 'checkbox', onchange: e => { st.direct = e.target.checked; render(); } }, st.direct ? { checked: '' } : {})), 'Direct trips only (no unsaved stops on the way)']);
+  }
+
   /* ---------- tables: [heading, value, screen format, right-align, CSV format, special] ---------- */
   const hos = (s, f) => (s.hos && !s.hos.none ? f(s.hos) : null);
   const TABLES = {
@@ -94,7 +130,7 @@
         ['Shift', s => s.num, null, 1], ['Shift date', s => s.date], ['Driver', s => s.driver], ['Truck', s => s.vehicle],
         ['Start yard', s => s.startYard], ['Departed', s => s.s, C.fmtDT, 1, C.fmtDTcsv], ['End yard', s => s.endYard, null, 0, null, 'csv'], ['Returned', s => s.e, C.fmtDT, 1, C.fmtDTcsv],
         ['Hours worked', s => s.dur, D, 1, C.fmtDur], ['Hours worked (decimal)', s => s.dur, C.hrs, 1, C.hrs, 'csv'], ['Where the time went', s => s.dur, null, 0, null, 'strip'],
-        ['Stops', s => s.stops, null, 1], ['Drive time', s => s.drive, D, 1, C.fmtDur], ['Time on site', s => s.onSite, D, 1, C.fmtDur], ['Unsaved stop time', s => s.unlisted + s.yardTime, D, 1, C.fmtDur], ['Miles', s => s.meters, mi, 1, mi],
+        ['Stops', s => s.stops, null, 1], ['Drive time', s => s.drive, D, 1, C.fmtDur], ['Time on site', s => s.onSite, D, 1, C.fmtDur], ['Unsaved stop time', s => s.unlisted + s.yardTime, D, 1, C.fmtDur], ['Miles', s => s.meters, mi, 1, mi], ['Avg driving speed (mph)', s => C.mph(s.meters, s.drive), sp, 1],
         ['Rest before shift', s => hos(s, h => h.restBefore), (v, s) => (v == null ? '' : (s.hos.restBeforeOpen ? 'over ' : '') + D(v)), 1, v => (v == null ? '' : C.hrs(v))],
         ['ELD on duty from', s => hos(s, h => h.clockIn), C.fmtDT, 1, C.fmtDTcsv, 'csv'], ['ELD off duty at', s => hos(s, h => h.clockOut), C.fmtDT, 1, C.fmtDTcsv, 'csv'],
         ['ELD on-duty time', s => hos(s, h => h.onDuty), D, 1, C.fmtDur], ['ELD driving', s => hos(s, h => h.drive), D, 1, C.fmtDur], ['ELD breaks', s => hos(s, h => h.breaks), D, 1, C.fmtDur, 'csv'],
@@ -116,11 +152,27 @@
       file: 'driver-totals', rows: () => C.driverTotals(shifts()), cols: [
         ['Driver', d => d.driver], ['Days worked', d => d.days.size, null, 1], ['Shifts', d => d.shifts, null, 1], ['Total hours worked', d => d.dur, D, 1, C.fmtDur], ['Total hours (decimal)', d => d.dur, C.hrs, 1, C.hrs],
         ['Average shift', d => d.dur / d.shifts, D, 1, C.fmtDur], ['Longest shift', d => d.longest, D, 1, C.fmtDur], ['Drive time', d => d.drive, D, 1, C.fmtDur], ['Time on site', d => d.onSite, D, 1, C.fmtDur],
-        ['Miles', d => d.meters, mi, 1, mi], ['ELD on-duty time', d => d.hosOnDuty, D, 1, C.fmtDur], ['Shifts over 16h', d => d.over16, null, 1], ['Shifts over 10h driving', d => d.over10, null, 1],
+        ['Miles', d => d.meters, mi, 1, mi], ['Avg driving speed (mph)', d => C.mph(d.meters, d.drive), sp, 1], ['ELD on-duty time', d => d.hosOnDuty, D, 1, C.fmtDur], ['Shifts over 16h', d => d.over16, null, 1], ['Shifts over 10h driving', d => d.over10, null, 1],
         ['Starts with under 10h rest', d => d.shortRest, null, 1], ['34h restarts', d => d.restarts, null, 1]]
+    },
+    sites: {
+      file: 'time-on-site', rows: siteRows, cols: [
+        ['Site', r => r.site], ['Visits', r => r.n, null, 1], ['Avg time on site', r => r.avg, D, 1, C.fmtDur], ['Typical (median)', r => r.med, D, 1, C.fmtDur], ['Shortest', r => r.min, D, 1, C.fmtDur], ['Longest', r => r.max, D, 1, C.fmtDur],
+        ['Visits over 1 hour', r => r.over1, null, 1], ['Total time on site', r => r.total, D, 1, C.fmtDur], ['Total (decimal hours)', r => r.total, C.hrs, 1, C.hrs, 'csv'], ['Drivers', r => r.drivers, null, 1]]
+    },
+    lanes: {
+      file: 'point-to-point', rows: laneRows, extra: directToggle, onRow: r => { st.a = r.from; st.b = r.to; go('compare'); }, cols: [
+        ['From', r => r.from], ['To', r => r.to], ['Trips', r => r.n, null, 1], ['Avg drive time', r => r.drive, D, 1, C.fmtDur], ['Fastest', r => r.min, D, 1, C.fmtDur], ['Slowest', r => r.max, D, 1, C.fmtDur],
+        ['Avg miles', r => r.m, mi, 1, mi], ['Avg speed (mph)', r => r.mph, sp, 1], ['Avg arrive at From to depart To', r => r.span, D, 1, C.fmtDur], ['Drivers', r => r.drivers, null, 1]]
+    },
+    pair: {
+      file: 'trips-between', rows: () => hops().filter(h => (h.from === st.a && h.to === st.b) || (h.from === st.b && h.to === st.a)), open: r => r.s, defaultSort: { i: 5, dir: -1 }, cols: [
+        ['Shift date', r => r.s.date], ['Driver', r => r.s.driver], ['Truck', r => r.s.vehicle], ['From', r => r.from], ['To', r => r.to], ['Left', r => r.dep, C.fmtDT, 1, C.fmtDTcsv], ['Arrived', r => r.arr, C.fmtDT, 1, C.fmtDTcsv],
+        ['Drive time', r => r.drive, D, 1, C.fmtDur], ['Miles', r => r.m, mi, 1, mi], ['Speed (mph)', r => C.mph(r.m, r.drive), sp, 1], ['Arrive at From to depart To', r => r.span, D, 1, C.fmtDur], ['Unsaved stops on the way', r => r.via, null, 1]]
     }
   };
   const ctx = r => (r.l ? r.s : r);
+  const rowShift = r => (r.s || r);
   const show = (c, r) => { const v = c[1](r); return v == null ? '' : String(c[2] ? c[2](v, ctx(r)) : v); };
   const csvv = (c, r) => { const v = c[1](r); return v == null ? '' : String(c[4] ? c[4](v, ctx(r)) : (c[2] ? c[2](v, ctx(r)) : v)); };
   function tableRows(key) {
@@ -148,18 +200,18 @@
     const head = el('tr', {}, t.cols.map((c, i) => c[5] === 'csv' ? null : el('th', { class: c[3] ? 'r' : '', 'aria-sort': so && so.i === i ? (so.dir > 0 ? 'ascending' : 'descending') : null },
       c[5] === 'strip' ? [el('button', { type: 'button', text: c[0], onclick: () => sortBy(key, i) })] : [el('button', { type: 'button', text: c[0] + (so && so.i === i ? (so.dir > 0 ? ' ↑' : ' ↓') : ''), onclick: () => sortBy(key, i) })])));
     const body = el('tbody', {}, rows.slice(0, max).map(r => {
-      const tr = el('tr', { class: (r.l && r.l.isReturn ? 'ret ' : '') + (t.open ? 'click' : '') }, t.cols.map(c => {
+      const tr = el('tr', { class: (r.l && r.l.isReturn ? 'ret ' : '') + (t.open || t.onRow ? 'click' : '') }, t.cols.map(c => {
         if (c[5] === 'csv') return null;
         if (c[5] === 'strip') return el('td', {}, [strip(r, Math.max(STRIP_SCALE, r.dur))]);
         if (c[5] === 'flags') return el('td', {}, pills(show(c, r).split('; ').filter(Boolean)));
         return el('td', { class: c[3] ? 'r' : '', text: show(c, r) });
       }));
-      if (t.open) { tr.tabIndex = 0; const go = () => openShift(t.open(r)); tr.addEventListener('click', go); tr.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }); }
+      if (t.open || t.onRow) { tr.tabIndex = 0; const go = () => (t.onRow ? t.onRow(r) : openShift(t.open(r))); tr.addEventListener('click', go); tr.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }); }
       return tr;
     }));
     return el('section', { class: 'panel' }, [
       el('div', { class: 'tools' }, [search, el('span', { class: 'count', text: rows.length.toLocaleString() + (rows.length === 1 ? ' row' : ' rows') + (rows.length > max ? ' (first ' + max.toLocaleString() + ' shown, the CSV has all)' : '') }),
-        key === 'shifts' ? legend() : null, el('span', { class: 'grow', style: 'flex:1' }), msg, el('button', { type: 'button', class: 'btn', text: 'Download CSV', onclick: () => downloadCsv(key, msg) })]),
+        key === 'shifts' ? legend() : null, t.extra ? t.extra() : null, el('span', { class: 'grow', style: 'flex:1' }), msg, el('button', { type: 'button', class: 'btn', text: 'Download CSV', onclick: () => downloadCsv(key, msg) })]),
       rows.length ? el('div', { class: 'scroll' }, [el('table', {}, [el('thead', {}, [head]), body])]) : el('div', { class: 'empty', text: st.report ? 'No rows match. Clear the search or filters, or pick another period.' : 'Run a report to see data.' })]);
   }
   function sortBy(key, i) { const so = st.sort[key] || TABLES[key].defaultSort; st.sort[key] = so && so.i === i ? { i, dir: -so.dir } : { i, dir: 1 }; render(); }
@@ -222,12 +274,28 @@
       el('div', { class: 'inner' }, [
         s.flags.length ? el('div', {}, pills(s.flags)) : null,
         el('div', {}, [strip(s, null, true), el('div', { style: 'margin-top:6px' }, [legend()])]),
-        el('dl', { class: 'facts' }, [].concat(fact('Hours worked', D(s.dur)), fact('Drive time', D(s.drive)), fact('Time on site', D(s.onSite)), fact('Miles', mi(s.meters)), fact('Stops', String(s.stops)), fact('Unsaved stop time', D(s.unlisted + s.yardTime)),
+        el('dl', { class: 'facts' }, [].concat(fact('Hours worked', D(s.dur)), fact('Drive time', D(s.drive)), fact('Time on site', D(s.onSite)), fact('Miles', mi(s.meters)), fact('Avg driving speed', C.mph(s.meters, s.drive) == null ? '' : sp(C.mph(s.meters, s.drive)) + ' mph'), fact('Stops', String(s.stops)), fact('Unsaved stop time', D(s.unlisted + s.yardTime)),
           fact('Rest before shift', h && h.restBefore != null ? (h.restBeforeOpen ? 'over ' : '') + D(h.restBefore) : ''), fact('ELD on-duty time', h ? D(h.onDuty) : ''), fact('ELD driving', h ? D(h.drive) : ''))),
         el('h3', { style: 'margin:0;font:600 15px var(--head)', text: 'Stops in order' }), legs])]);
     $('drawer-root').textContent = '';
     $('drawer-root').appendChild(el('div', { class: 'scrim', onclick: closeDrawer })); $('drawer-root').appendChild(drawer);
     document.addEventListener('keydown', escClose); close.focus();
+  }
+
+  /* ---------- compare two locations ---------- */
+  function compareView() {
+    const names = new Set(); for (const s of st.report.shifts) { names.add(s.startYard); s.legs.forEach(l => names.add(C.label(l.place))); }
+    const pick = (key, label) => { const sel = el('select', { onchange: e => { st[key] = e.target.value; render(); } }, [new Option('Choose a location', '')].concat([...names].sort().map(n => new Option(n, n)))); sel.value = st[key]; return el('label', { class: 'field' }, [label, sel]); };
+    const controls = el('section', { class: 'panel' }, [el('div', { class: 'tools' }, [pick('a', 'Location A'), pick('b', 'Location B'),
+      el('button', { type: 'button', class: 'btn', text: 'Swap A and B', onclick: () => { const t = st.a; st.a = st.b; st.b = t; render(); } }), directToggle()])]);
+    if (!st.a || !st.b || st.a === st.b) return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [controls, el('section', { class: 'panel' }, [el('div', { class: 'empty', text: 'Choose two different locations to see average miles, drive time and speed between them. You can also click any row on the Point to point page.' })])]);
+    const all = hops(), dir = (f, t) => {
+      const g = agg(all.filter(h => h.from === f && h.to === t)), tile = (v, l) => el('div', {}, [el('b', { text: v || 'n/a' }), el('span', { text: l })]);
+      return el('section', { class: 'panel' }, [el('header', {}, [el('h2', { text: f + ' to ' + t }), el('span', { class: 'hint', text: g.n + (g.n === 1 ? ' trip' : ' trips') + ' by ' + g.drivers + (g.drivers === 1 ? ' driver' : ' drivers') })]),
+        g.n ? el('div', { class: 'band', style: 'border:0;grid-template-columns:repeat(5,minmax(0,1fr))' }, [tile(mi(g.m), 'Avg miles'), tile(D(g.drive), 'Avg drive time'), tile(sp(g.mph), 'Avg speed, mph'), tile(D(g.min) + ' to ' + D(g.max), 'Fastest to slowest'), tile(g.span == null ? '' : D(g.span), 'Avg arrive at ' + f + ' to depart ' + t)])
+          : el('div', { class: 'empty', text: 'No trips in this direction for this period and these filters.' })]);
+    };
+    return el('div', { style: 'display:flex;flex-direction:column;gap:16px' }, [controls, dir(st.a, st.b), dir(st.b, st.a), tableView('pair')]);
   }
 
   /* ---------- setup pages ---------- */
@@ -247,6 +315,7 @@
       'Only stops at saved Samsara places are listed. Drive time and miles through unsaved stops are added to the next saved stop, and time parked at unsaved places is shown as unsaved stop time. Two stops in a row at the same place under half a mile apart are merged.',
       'Trucks with no driver recorded and yard-to-yard moves with no saved stops are left out. Trucks still out on a shift are not counted until they return.',
       'ELD columns come from the driver’s hours-of-service log: on duty from the end of the last rest of 5 hours or more before the shift until the next one after it. Rest before shift is the length of that earlier rest; "over" means it began before the loaded days. Personal conveyance counts as rest.',
+      'Point to point: each saved stop to the next saved stop, including the yard. Average speed is total miles divided by total drive time. "Arrive at From to depart To" is time on site at the first place, plus the drive, plus time on site at the second. With "Direct trips only" on, trips that paused at an unsaved place on the way are left out so averages are not stretched.',
       'Flags: over 16 hours yard to yard, over 10 hours of drive time, under 10 hours of rest before the shift, and a 34-hour restart before the shift.'];
     return el('section', { class: 'panel' }, [el('div', { class: 'body' }, [el('ul', { class: 'rules' }, items.map(t => el('li', { text: t })))])]);
   }
@@ -262,9 +331,9 @@
     if (st.view === 'check') v.appendChild(checkView());
     else if (st.view === 'rules') v.appendChild(rulesView());
     else if (!r) v.appendChild(el('section', { class: 'panel' }, [el('div', { class: 'empty', text: st.loading ? 'Loading trips and hours of service from Samsara. A long period can take a minute.' : 'Choose a period and press Run report.' })]));
-    else v.appendChild(st.view === 'overview' ? overview() : tableView(st.view));
+    else v.appendChild(st.view === 'overview' ? overview() : st.view === 'compare' ? compareView() : tableView(st.view));
   }
-  function go(view) { st.view = TITLES[view] ? view : 'overview'; st.q = ''; if (location.hash.slice(1) !== st.view) history.replaceState(null, '', '#' + st.view); render(); }
+  function go(view) { st.view = TITLES[view] ? view : 'overview'; st.q = ''; window.scrollTo(0, 0); if (location.hash.slice(1) !== st.view) history.replaceState(null, '', '#' + st.view); render(); }
 
   /* ---------- start ---------- */
   document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => go(b.dataset.view)));

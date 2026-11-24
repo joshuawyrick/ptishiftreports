@@ -58,6 +58,7 @@
   }
   const hrs = ms => (ms == null ? '' : (ms / H).toFixed(2));
   const miles = m => (m / M_PER_MI);
+  const mph = (m, ms) => (ms > 0 ? miles(m) / (ms / H) : null);
   function titleCase(n) { return (n || '').toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()); }
 
   /* trip rows for one vehicle -> sorted, de-duplicated drives */
@@ -120,18 +121,18 @@
   function finishShift(g) {
     const trips = [].concat(...g.cycles.map(c => c.trips));
     const first = g.cycles[0], last = g.cycles[g.cycles.length - 1];
-    let legs = [], accD = 0, accM = 0, unlisted = 0, prev = label(first.startYard);
+    let legs = [], accD = 0, accM = 0, accV = 0, accVT = 0, unlisted = 0, prev = label(first.startYard);
     for (let i = 0; i < trips.length; i++) {
       const t = trips[i]; accD += t.e - t.s; accM += t.m;
-      if (i === trips.length - 1) { legs.push({ from: prev, name: 'Return: ' + label(last.endYard), place: last.endYard, arr: t.e, dep: null, drive: accD, m: accM, isReturn: true }); break; }
+      if (i === trips.length - 1) { legs.push({ from: prev, name: 'Return: ' + label(last.endYard), place: last.endYard, arr: t.e, dep: null, drive: accD, m: accM, via: accV, viaTime: accVT, isReturn: true }); break; }
       const nx = trips[i + 1];
       const cycleEnd = isYard(t.toName) || (g.cycles.some(c => c.trips[c.trips.length - 1] === t));
       if (t.toName || cycleEnd) {
         const place = t.toName || g.cycles.find(c => c.trips[c.trips.length - 1] === t).endYard;
         const yard = isYard(place);
-        legs.push({ from: prev, name: label(place) + (yard ? ' (mid-shift return)' : ''), place, arr: t.e, dep: nx.s, drive: accD, m: accM, yardVisit: yard });
-        prev = label(place); accD = 0; accM = 0;
-      } else unlisted += Math.max(0, nx.s - t.e);
+        legs.push({ from: prev, name: label(place) + (yard ? ' (mid-shift return)' : ''), place, arr: t.e, dep: nx.s, drive: accD, m: accM, via: accV, viaTime: accVT, yardVisit: yard });
+        prev = label(place); accD = 0; accM = 0; accV = 0; accVT = 0;
+      } else { const gap = Math.max(0, nx.s - t.e); unlisted += gap; accV++; accVT += gap; }
     }
     const merged = [];
     for (const l of legs) {
@@ -231,6 +232,6 @@
     return [...m.values()].sort((a, b) => a.driver.localeCompare(b.driver));
   }
 
-  return { TZ, RULES, H, MIN, DAY, DEFAULT_YARDS, setYards, isYard, label, laMidnight, laDate, addDays, fmtDT, fmtTime, fmtDTcsv, fmtDur, fmtDurWords, hrs, miles, titleCase,
+  return { TZ, RULES, H, MIN, DAY, DEFAULT_YARDS, setYards, isYard, label, laMidnight, laDate, addDays, fmtDT, fmtTime, fmtDTcsv, fmtDur, fmtDurWords, hrs, miles, mph, titleCase,
     extractTrips, buildCycles, buildShifts, hosBlocks, hosForShift, flagShift, isOverLimit, dailyHours, driverTotals };
 });

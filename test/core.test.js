@@ -38,3 +38,9 @@ assert.strictEqual(hosRow({ hosStatusType: 'sleeperBed', logStartTime: '2026-11-
 assert.strictEqual(hosRow({ hosStatusType: 'driving', logStartTime: '2026-11-23T00:00:00Z', logEndTime: '2026-11-23T01:00:00Z' }).activityStatus, 3);
 
 console.log('All shift rule checks passed.');
+
+// point-to-point: Olympus -> Robinson passed through unsaved stops, Mt Poso -> Olympus passed through one
+assert.strictEqual(juan.legs.find(l => l.place === 'Robinson B Dehy Lease').via, 2);
+assert.strictEqual(dan.legs.find(l => l.place === 'WF36').via, 0);
+assert.strictEqual(Core.mph(1609.344 * 60, Core.H).toFixed(0), '60');
+console.log('Point-to-point checks passed.');
